@@ -5,18 +5,6 @@ import "net/http"
 // Stub handlers — replaced in subsequent tasks.
 // Each returns an http.HandlerFunc so the router compiles.
 
-func timesheetSubmitHandler(deps *Dependencies) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) { respondError(w, http.StatusNotImplemented, "not implemented") }
-}
-
-func timesheetListOwnHandler(deps *Dependencies) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) { respondError(w, http.StatusNotImplemented, "not implemented") }
-}
-
-func timesheetListTeamHandler(deps *Dependencies) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) { respondError(w, http.StatusNotImplemented, "not implemented") }
-}
-
 func userListHandler(deps *Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) { respondError(w, http.StatusNotImplemented, "not implemented") }
 }
