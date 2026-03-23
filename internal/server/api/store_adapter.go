@@ -1,0 +1,29 @@
+package api
+
+import (
+	"context"
+
+	"github.com/google/uuid"
+	"github.com/jaypaulb/trasker/internal/server/auth"
+	"github.com/jaypaulb/trasker/internal/server/store"
+)
+
+// StoreAPIKeyAdapter adapts store.Store to auth.APIKeyLookup.
+type StoreAPIKeyAdapter struct {
+	store *store.Store
+}
+
+// NewStoreAPIKeyAdapter creates a new adapter.
+func NewStoreAPIKeyAdapter(s *store.Store) *StoreAPIKeyAdapter {
+	return &StoreAPIKeyAdapter{store: s}
+}
+
+// ListAllActiveAPIKeys returns all non-revoked, non-expired API keys with user roles.
+func (a *StoreAPIKeyAdapter) ListAllActiveAPIKeys(ctx context.Context) ([]auth.APIKeyRecord, error) {
+	return a.store.ListAllActiveAPIKeysWithRoles(ctx)
+}
+
+// UpdateAPIKeyLastUsed updates the last_used_at timestamp.
+func (a *StoreAPIKeyAdapter) UpdateAPIKeyLastUsed(ctx context.Context, id uuid.UUID) error {
+	return a.store.UpdateAPIKeyLastUsed(ctx, id)
+}

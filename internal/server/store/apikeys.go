@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jaypaulb/trasker/internal/server/auth"
 )
 
 // APIKey represents a row in the api_keys table.
@@ -124,6 +125,30 @@ func (s *Store) UpdateAPIKeyLastUsed(ctx context.Context, id uuid.UUID) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// ListAllActiveAPIKeysWithRoles returns all active (non-revoked, non-expired) API keys
+// joined with their user's role. Used by the API key authentication middleware.
+func (s *Store) ListAllActiveAPIKeysWithRoles(ctx context.Context) ([]auth.APIKeyRecord, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT k.id, k.user_id, k.key_hash, u.role, k.expires_at, k.revoked
+		 FROM api_keys k
+		 JOIN users u ON k.user_id = u.id
+		 WHERE k.revoked = false AND k.expires_at > now()`)
+	if err != nil {
+		return nil, fmt.Errorf("listing active api keys with roles: %w", err)
+	}
+	defer rows.Close()
+
+	var keys []auth.APIKeyRecord
+	for rows.Next() {
+		var k auth.APIKeyRecord
+		if err := rows.Scan(&k.ID, &k.UserID, &k.KeyHash, &k.Role, &k.ExpiresAt, &k.Revoked); err != nil {
+			return nil, fmt.Errorf("scanning api key record: %w", err)
+		}
+		keys = append(keys, k)
+	}
+	return keys, rows.Err()
 }
 
 // RevokeAPIKey marks an API key as revoked.
