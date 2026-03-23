@@ -1,0 +1,12 @@
+# Ignore all dotfiles by default
+.*
+
+# Except standard version control files
+!.git
+!.gitignore
+!.gitattributes
+!.gitmodules
+!.gitkeep
+
+# Build output
+dist/
