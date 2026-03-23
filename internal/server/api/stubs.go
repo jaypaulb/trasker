@@ -29,14 +29,6 @@ func timesheetListTeamHandler(deps *Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) { respondError(w, http.StatusNotImplemented, "not implemented") }
 }
 
-func authLoginHandler(deps *Dependencies) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) { respondError(w, http.StatusNotImplemented, "not implemented") }
-}
-
-func authRefreshHandler(deps *Dependencies) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) { respondError(w, http.StatusNotImplemented, "not implemented") }
-}
-
 func userListHandler(deps *Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) { respondError(w, http.StatusNotImplemented, "not implemented") }
 }
