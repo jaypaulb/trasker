@@ -5,11 +5,6 @@ import "net/http"
 // Stub handlers — replaced in subsequent tasks.
 // Each returns an http.HandlerFunc so the router compiles.
 
-// healthHandler stub — replaced in Task 13 with health.go.
-func healthHandler(deps *Dependencies) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) { respondJSON(w, http.StatusOK, map[string]string{"status": "ok"}) }
-}
-
 func deviceRegisterHandler(deps *Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) { respondError(w, http.StatusNotImplemented, "not implemented") }
 }
