@@ -95,9 +95,35 @@ vet:
 
 ## Remove build artifacts
 clean:
-	rm -rf $(DIST)
+	rm -rf $(DIST) build
 
 ## Show version info that would be stamped
 version:
 	@echo "Version: $(VERSION)"
 	@echo "Commit:  $(COMMIT)"
+
+# --- Cross-Compilation Targets (CGO_ENABLED=0) ---
+
+BUILD_DIR = build
+
+# All client cross-compile targets
+CROSS_PLATFORMS = linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64
+
+.PHONY: build-all-clients
+build-all-clients:
+	@for target in $(CROSS_PLATFORMS); do \
+		os=$${target%/*}; \
+		arch=$${target#*/}; \
+		ext=""; \
+		if [ "$$os" = "windows" ]; then ext=".exe"; fi; \
+		echo "Building trasker-client for $$os/$$arch..."; \
+		mkdir -p $(BUILD_DIR)/$$os-$$arch; \
+		CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build \
+			-ldflags '$(LDFLAGS)' \
+			-o $(BUILD_DIR)/$$os-$$arch/trasker-client$$ext \
+			./cmd/trasker-client/ || exit 1; \
+	done
+
+.PHONY: verify-cross-compile
+verify-cross-compile: build-all-clients
+	@bash scripts/verify-cross-compile.sh

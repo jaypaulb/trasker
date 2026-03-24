@@ -1,3 +1,5 @@
+//go:build !darwin || cgo
+
 // internal/client/tray/tray.go
 package tray
 

@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build darwin && cgo
 
 // internal/client/tracker/tracker_darwin.go
 package tracker

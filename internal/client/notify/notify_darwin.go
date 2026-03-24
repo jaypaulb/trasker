@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build darwin && cgo
 
 // internal/client/notify/notify_darwin.go
 package notify

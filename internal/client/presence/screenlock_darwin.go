@@ -1,4 +1,4 @@
-//go:build darwin
+//go:build darwin && cgo
 
 // internal/client/presence/screenlock_darwin.go
 package presence
