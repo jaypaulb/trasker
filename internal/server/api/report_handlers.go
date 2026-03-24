@@ -17,6 +17,7 @@ func reportSummaryHandler(deps *Dependencies) http.HandlerFunc {
 
 		summary, err := deps.Store.GetReportSummary(r.Context(), filters)
 		if err != nil {
+			deps.Logger.Error("failed to generate report summary", "error", err)
 			respondError(w, http.StatusInternalServerError, "failed to generate summary")
 			return
 		}
@@ -41,6 +42,7 @@ func reportExportHandler(deps *Dependencies) http.HandlerFunc {
 
 		rows, err := deps.Store.GetReportExport(r.Context(), filters)
 		if err != nil {
+			deps.Logger.Error("failed to generate CSV export", "error", err)
 			respondError(w, http.StatusInternalServerError, "failed to generate export")
 			return
 		}

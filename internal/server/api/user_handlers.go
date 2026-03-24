@@ -13,6 +13,7 @@ func userListHandler(deps *Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		users, err := deps.Store.ListUsers(r.Context())
 		if err != nil {
+			deps.Logger.Error("failed to list users", "error", err)
 			respondError(w, http.StatusInternalServerError, "failed to list users")
 			return
 		}
@@ -54,6 +55,7 @@ func userUpdateRoleHandler(deps *Dependencies) http.HandlerFunc {
 
 		user, err := deps.Store.UpdateUserRole(r.Context(), userID, req.Role)
 		if err != nil {
+			deps.Logger.Error("failed to update user role", "error", err, "user_id", userID)
 			respondError(w, http.StatusNotFound, "user not found")
 			return
 		}

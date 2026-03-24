@@ -29,6 +29,7 @@ func adminDeleteEntryHandler(deps *Dependencies) http.HandlerFunc {
 		// Get entry before deleting (for audit log)
 		entry, err := deps.Store.GetTimesheetEntryByID(r.Context(), entryID)
 		if err != nil {
+			deps.Logger.Error("failed to get entry for deletion", "error", err, "entry_id", entryID)
 			respondError(w, http.StatusNotFound, "entry not found")
 			return
 		}
@@ -36,6 +37,7 @@ func adminDeleteEntryHandler(deps *Dependencies) http.HandlerFunc {
 		oldValue, _ := json.Marshal(entry)
 
 		if err := deps.Store.DeleteTimesheetEntry(r.Context(), entryID); err != nil {
+			deps.Logger.Error("failed to delete entry", "error", err, "entry_id", entryID)
 			respondError(w, http.StatusInternalServerError, "failed to delete entry")
 			return
 		}
@@ -71,6 +73,7 @@ func adminEditEntryHandler(deps *Dependencies) http.HandlerFunc {
 		// Get old entry for audit
 		oldEntry, err := deps.Store.GetTimesheetEntryByID(r.Context(), entryID)
 		if err != nil {
+			deps.Logger.Error("failed to get entry for edit", "error", err, "entry_id", entryID)
 			respondError(w, http.StatusNotFound, "entry not found")
 			return
 		}
@@ -92,6 +95,7 @@ func adminEditEntryHandler(deps *Dependencies) http.HandlerFunc {
 			Notes:     req.Notes,
 		})
 		if err != nil {
+			deps.Logger.Error("failed to update entry", "error", err, "entry_id", entryID)
 			respondError(w, http.StatusInternalServerError, "failed to update entry")
 			return
 		}
@@ -135,6 +139,7 @@ func adminRevokeKeyHandler(deps *Dependencies) http.HandlerFunc {
 		}
 
 		if err := deps.Store.RevokeAPIKey(r.Context(), keyID); err != nil {
+			deps.Logger.Error("failed to revoke API key", "error", err, "key_id", keyID)
 			respondError(w, http.StatusNotFound, "API key not found")
 			return
 		}
@@ -164,6 +169,7 @@ func adminAuditLogHandler(deps *Dependencies) http.HandlerFunc {
 
 		logs, err := deps.Store.ListAuditLogs(r.Context(), filters)
 		if err != nil {
+			deps.Logger.Error("failed to list audit logs", "error", err)
 			respondError(w, http.StatusInternalServerError, "failed to list audit logs")
 			return
 		}
@@ -190,6 +196,7 @@ func adminGetSettingsHandler(deps *Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		settings, err := deps.Store.GetOrgSettings(r.Context())
 		if err != nil {
+			deps.Logger.Error("failed to get org settings", "error", err)
 			respondError(w, http.StatusNotFound, "org settings not configured")
 			return
 		}
@@ -224,6 +231,7 @@ func adminUpdateSettingsHandler(deps *Dependencies) http.HandlerFunc {
 			KeyExpiryDays: req.KeyExpiryDays,
 		})
 		if err != nil {
+			deps.Logger.Error("failed to update settings", "error", err)
 			respondError(w, http.StatusInternalServerError, "failed to update settings")
 			return
 		}

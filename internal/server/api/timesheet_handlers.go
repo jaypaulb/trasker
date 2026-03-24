@@ -49,6 +49,7 @@ func timesheetSubmitHandler(deps *Dependencies) http.HandlerFunc {
 		// Resolve device
 		device, err := deps.Store.GetDeviceByClientID(r.Context(), req.ClientDeviceID, apiKeyID)
 		if err != nil {
+			deps.Logger.Error("failed to resolve device", "error", err, "client_device_id", req.ClientDeviceID)
 			respondError(w, http.StatusBadRequest, "device not registered")
 			return
 		}
@@ -89,6 +90,7 @@ func timesheetSubmitHandler(deps *Dependencies) http.HandlerFunc {
 			Entries:     entries,
 		})
 		if err != nil {
+			deps.Logger.Error("failed to create timesheet", "error", err, "user_id", userID)
 			respondError(w, http.StatusInternalServerError, "failed to create timesheet")
 			return
 		}
@@ -111,6 +113,7 @@ func timesheetListOwnHandler(deps *Dependencies) http.HandlerFunc {
 
 		timesheets, err := deps.Store.ListTimesheetsByUser(r.Context(), userID)
 		if err != nil {
+			deps.Logger.Error("failed to list timesheets", "error", err, "user_id", userID)
 			respondError(w, http.StatusInternalServerError, "failed to list timesheets")
 			return
 		}
@@ -132,6 +135,7 @@ func timesheetListTeamHandler(deps *Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		timesheets, err := deps.Store.ListTimesheetsAll(r.Context(), store.TimesheetFilters{})
 		if err != nil {
+			deps.Logger.Error("failed to list team timesheets", "error", err)
 			respondError(w, http.StatusInternalServerError, "failed to list team timesheets")
 			return
 		}
