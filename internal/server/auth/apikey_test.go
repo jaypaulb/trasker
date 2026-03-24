@@ -2,6 +2,7 @@ package auth_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -9,22 +10,24 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jaypaulb/trasker/internal/server/auth"
+	"github.com/jaypaulb/trasker/internal/shared/apikey"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
 )
 
+var errNotFound = errors.New("not found")
+
 // mockAPIKeyStore implements auth.APIKeyLookup for testing.
 type mockAPIKeyStore struct {
-	keys map[string]*auth.APIKeyRecord // keyed by hash-matchable plaintext
+	keys map[string]*auth.APIKeyRecord // keyed by prefix
 }
 
-func (m *mockAPIKeyStore) ListAllActiveAPIKeys(ctx context.Context) ([]auth.APIKeyRecord, error) {
-	var result []auth.APIKeyRecord
-	for _, k := range m.keys {
-		result = append(result, *k)
+func (m *mockAPIKeyStore) GetActiveAPIKeyByPrefix(ctx context.Context, prefix string) (*auth.APIKeyRecord, error) {
+	if k, ok := m.keys[prefix]; ok {
+		return k, nil
 	}
-	return result, nil
+	return nil, errNotFound
 }
 
 func (m *mockAPIKeyStore) UpdateAPIKeyLastUsed(ctx context.Context, id uuid.UUID) error {
@@ -32,16 +35,17 @@ func (m *mockAPIKeyStore) UpdateAPIKeyLastUsed(ctx context.Context, id uuid.UUID
 }
 
 func TestAPIKeyMiddleware_ValidKey(t *testing.T) {
-	plainKey := "trsk_abcdef1234567890abcdef1234567890"
+	plainKey := "tsk_abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab"
 	hash, err := bcrypt.GenerateFromPassword([]byte(plainKey), bcrypt.DefaultCost)
 	require.NoError(t, err)
 
 	userID := uuid.New()
 	keyID := uuid.New()
+	prefix := apikey.Prefix(plainKey)
 
 	store := &mockAPIKeyStore{
 		keys: map[string]*auth.APIKeyRecord{
-			plainKey: {
+			prefix: {
 				ID:        keyID,
 				UserID:    userID,
 				KeyHash:   string(hash),
@@ -94,7 +98,7 @@ func TestAPIKeyMiddleware_InvalidKey(t *testing.T) {
 	}))
 
 	req := httptest.NewRequest("POST", "/api/v1/timesheets", nil)
-	req.Header.Set("Authorization", "Bearer trsk_invalidkey")
+	req.Header.Set("Authorization", "Bearer tsk_invalidkey00000000000000000000000000000000000000000000000000000000")
 	rr := httptest.NewRecorder()
 
 	handler.ServeHTTP(rr, req)
@@ -103,13 +107,15 @@ func TestAPIKeyMiddleware_InvalidKey(t *testing.T) {
 }
 
 func TestAPIKeyMiddleware_ExpiredKey(t *testing.T) {
-	plainKey := "trsk_expired1234567890abcdef12345"
+	plainKey := "tsk_expired01234567890abcdef1234567890abcdef1234567890abcdef123456789"
 	hash, err := bcrypt.GenerateFromPassword([]byte(plainKey), bcrypt.DefaultCost)
 	require.NoError(t, err)
 
+	prefix := apikey.Prefix(plainKey)
+
 	store := &mockAPIKeyStore{
 		keys: map[string]*auth.APIKeyRecord{
-			plainKey: {
+			prefix: {
 				ID:        uuid.New(),
 				UserID:    uuid.New(),
 				KeyHash:   string(hash),
