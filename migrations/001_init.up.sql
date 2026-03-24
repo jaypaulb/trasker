@@ -1,7 +1,7 @@
--- migrations/001_init.up.sql
--- Trasker server schema — initial migration
+-- Trasker initial schema
+-- This migration creates all tables needed for the server.
 
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";  -- for gen_random_uuid()
 
 CREATE TABLE users (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -10,7 +10,8 @@ CREATE TABLE users (
     display_name TEXT NOT NULL,
     role         TEXT NOT NULL DEFAULT 'member',
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT chk_user_role CHECK (role IN ('admin', 'manager', 'member'))
 );
 
 CREATE TABLE api_keys (
@@ -25,19 +26,22 @@ CREATE TABLE api_keys (
     revoked_at   TIMESTAMPTZ
 );
 
+CREATE INDEX idx_api_keys_user ON api_keys(user_id);
+CREATE INDEX idx_api_keys_prefix ON api_keys(key_prefix);
+
 CREATE TABLE devices (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id          UUID NOT NULL REFERENCES users(id),
     api_key_id       UUID NOT NULL REFERENCES api_keys(id),
     client_device_id TEXT NOT NULL,
     device_name      TEXT,
-    hostname         TEXT,
     os               TEXT NOT NULL,
     last_seen_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE UNIQUE INDEX idx_devices_client_api ON devices(client_device_id, api_key_id);
+CREATE INDEX idx_devices_user ON devices(user_id);
 
 CREATE TABLE timesheets (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -47,9 +51,12 @@ CREATE TABLE timesheets (
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE INDEX idx_timesheets_user ON timesheets(user_id);
+CREATE INDEX idx_timesheets_submitted ON timesheets(submitted_at);
+
 CREATE TABLE timesheet_entries (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    timesheet_id UUID NOT NULL REFERENCES timesheets(id),
+    timesheet_id UUID NOT NULL REFERENCES timesheets(id) ON DELETE CASCADE,
     tag          TEXT NOT NULL,
     started_at   TIMESTAMPTZ NOT NULL,
     ended_at     TIMESTAMPTZ NOT NULL,
@@ -57,6 +64,10 @@ CREATE TABLE timesheet_entries (
     notes        TEXT,
     app_summary  TEXT
 );
+
+CREATE INDEX idx_timesheet_entries_timesheet ON timesheet_entries(timesheet_id);
+CREATE INDEX idx_timesheet_entries_tag ON timesheet_entries(tag);
+CREATE INDEX idx_timesheet_entries_started ON timesheet_entries(started_at);
 
 CREATE TABLE audit_log (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -69,6 +80,10 @@ CREATE TABLE audit_log (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE INDEX idx_audit_log_admin ON audit_log(admin_id);
+CREATE INDEX idx_audit_log_action ON audit_log(action);
+CREATE INDEX idx_audit_log_created ON audit_log(created_at);
+
 CREATE TABLE org_settings (
     id              INTEGER PRIMARY KEY CHECK (id = 1),
     org_name        TEXT NOT NULL,
@@ -77,3 +92,7 @@ CREATE TABLE org_settings (
     key_expiry_days INTEGER NOT NULL DEFAULT 60,
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Insert default org settings row (single-row table)
+INSERT INTO org_settings (id, org_name, entra_tenant, entra_client)
+VALUES (1, 'My Organization', '', '');
