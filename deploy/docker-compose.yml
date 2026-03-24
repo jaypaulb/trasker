@@ -1,0 +1,91 @@
+# Trasker — Docker Compose deployment
+# Usage: cd deploy && docker compose up -d
+#
+# Requires .env file — see .env.example in this directory.
+
+services:
+  # PostgreSQL database
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-trasker}
+      POSTGRES_USER: ${POSTGRES_USER:-trasker}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trasker}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - internal
+
+  # Go API server
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.server
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      TRASKER_DB_HOST: postgres
+      TRASKER_DB_PORT: 5432
+      TRASKER_DB_NAME: ${POSTGRES_DB:-trasker}
+      TRASKER_DB_USER: ${POSTGRES_USER:-trasker}
+      TRASKER_DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      TRASKER_ENTRA_TENANT: ${ENTRA_TENANT_ID:?ENTRA_TENANT_ID is required}
+      TRASKER_ENTRA_CLIENT: ${ENTRA_CLIENT_ID:?ENTRA_CLIENT_ID is required}
+      TRASKER_ENTRA_SECRET: ${ENTRA_CLIENT_SECRET:?ENTRA_CLIENT_SECRET is required}
+      TRASKER_SERVER_URL: ${SERVER_URL:?SERVER_URL is required}
+      TRASKER_JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+    volumes:
+      # Builder needs access to Go source to cross-compile client binaries
+      - buildcache:/tmp/trasker-builds
+    expose:
+      - "8080"
+    networks:
+      - internal
+
+  # Svelte SPA served by nginx
+  web:
+    image: nginx:alpine
+    restart: unless-stopped
+    volumes:
+      - ../web/server-ui/build:/usr/share/nginx/html:ro
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    expose:
+      - "80"
+    networks:
+      - internal
+
+  # Caddy reverse proxy with auto-TLS
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+      - web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN is required}
+    networks:
+      - internal
+
+volumes:
+  pgdata:
+  buildcache:
+  caddy_data:
+  caddy_config:
+
+networks:
+  internal:

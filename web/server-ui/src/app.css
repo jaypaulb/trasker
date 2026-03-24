@@ -1,0 +1,16 @@
+@import 'tailwindcss';
+
+:root {
+  --color-primary: #2563eb;
+  --color-primary-dark: #1d4ed8;
+  --color-danger: #dc2626;
+  --color-warning: #d97706;
+  --color-success: #16a34a;
+  --color-bg: #f8fafc;
+  --color-sidebar: #1e293b;
+  --color-sidebar-text: #e2e8f0;
+}
+
+body {
+  @apply bg-[var(--color-bg)] text-gray-900 font-sans;
+}

@@ -1,0 +1,15 @@
+# Ignore all dotfiles by default
+.*
+
+# Except standard version control files
+!.git
+!.gitignore
+!.gitattributes
+!.gitmodules
+!.gitkeep
+
+# Except environment templates (never the actual .env, only the example)
+!.env.example
+
+# Build output
+dist/
