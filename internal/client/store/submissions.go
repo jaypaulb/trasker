@@ -59,12 +59,19 @@ func (s *Store) GetSubmission(id int64) (*Submission, error) {
 		return nil, fmt.Errorf("get submission: %w", err)
 	}
 
-	sub.SubmittedAt, _ = time.Parse(time.RFC3339, submittedAt)
+	var parseErr error
+	sub.SubmittedAt, parseErr = time.Parse(time.RFC3339, submittedAt)
+	if parseErr != nil {
+		return nil, fmt.Errorf("parse submitted_at %q: %w", submittedAt, parseErr)
+	}
 	if serverID.Valid {
 		sub.ServerID = &serverID.String
 	}
 	if lastRetry.Valid {
-		t, _ := time.Parse(time.RFC3339, lastRetry.String)
+		t, parseErr := time.Parse(time.RFC3339, lastRetry.String)
+		if parseErr != nil {
+			return nil, fmt.Errorf("parse last_retry %q: %w", lastRetry.String, parseErr)
+		}
 		sub.LastRetry = &t
 	}
 
@@ -109,12 +116,18 @@ func (s *Store) ListPendingSubmissions() ([]Submission, error) {
 			return nil, fmt.Errorf("scan submission: %w", err)
 		}
 
-		sub.SubmittedAt, _ = time.Parse(time.RFC3339, submittedAt)
+		sub.SubmittedAt, err = time.Parse(time.RFC3339, submittedAt)
+		if err != nil {
+			return nil, fmt.Errorf("parse submitted_at %q: %w", submittedAt, err)
+		}
 		if serverID.Valid {
 			sub.ServerID = &serverID.String
 		}
 		if lastRetry.Valid {
-			t, _ := time.Parse(time.RFC3339, lastRetry.String)
+			t, parseErr := time.Parse(time.RFC3339, lastRetry.String)
+			if parseErr != nil {
+				return nil, fmt.Errorf("parse last_retry %q: %w", lastRetry.String, parseErr)
+			}
 			sub.LastRetry = &t
 		}
 		subs = append(subs, sub)

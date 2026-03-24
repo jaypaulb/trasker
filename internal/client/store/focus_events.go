@@ -115,12 +115,22 @@ func scanFocusEventFromScanner(sc scanner) (*FocusEvent, error) {
 		return nil, fmt.Errorf("scan focus event: %w", err)
 	}
 
-	ev.StartedAt, _ = time.Parse(time.RFC3339, startedAt)
-	ev.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	var parseErr error
+	ev.StartedAt, parseErr = time.Parse(time.RFC3339, startedAt)
+	if parseErr != nil {
+		return nil, fmt.Errorf("parse started_at %q: %w", startedAt, parseErr)
+	}
+	ev.CreatedAt, parseErr = time.Parse(time.RFC3339, createdAt)
+	if parseErr != nil {
+		return nil, fmt.Errorf("parse created_at %q: %w", createdAt, parseErr)
+	}
 	ev.IsIdle = isIdle != 0
 
 	if endedAt.Valid {
-		t, _ := time.Parse(time.RFC3339, endedAt.String)
+		t, parseErr := time.Parse(time.RFC3339, endedAt.String)
+		if parseErr != nil {
+			return nil, fmt.Errorf("parse ended_at %q: %w", endedAt.String, parseErr)
+		}
 		ev.EndedAt = &t
 	}
 	if durationS.Valid {

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -43,6 +44,7 @@ func deviceRegisterHandler(deps *Dependencies) http.HandlerFunc {
 			OS:             req.OS,
 		})
 		if err != nil {
+			deps.Logger.Error("failed to register device", "error", err)
 			respondError(w, http.StatusInternalServerError, "failed to register device")
 			return
 		}
@@ -68,6 +70,7 @@ func deviceListHandler(deps *Dependencies) http.HandlerFunc {
 
 		devices, err := deps.Store.ListDevicesByUser(r.Context(), userID)
 		if err != nil {
+			deps.Logger.Error("failed to list devices", "error", err)
 			respondError(w, http.StatusInternalServerError, "failed to list devices")
 			return
 		}
@@ -110,7 +113,12 @@ func deviceUpdateHandler(deps *Dependencies) http.HandlerFunc {
 
 		device, err := deps.Store.UpdateDeviceName(r.Context(), deviceID, req.DeviceName)
 		if err != nil {
-			respondError(w, http.StatusNotFound, "device not found")
+			if errors.Is(err, store.ErrNotFound) {
+				respondError(w, http.StatusNotFound, "device not found")
+			} else {
+				deps.Logger.Error("failed to update device name", "error", err, "device_id", deviceID)
+				respondError(w, http.StatusInternalServerError, "failed to update device")
+			}
 			return
 		}
 

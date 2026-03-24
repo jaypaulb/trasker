@@ -87,10 +87,20 @@ func (s *SubmitService) LoadEventsForSubmission(eventIDs []int64) ([]RawEvent, e
 			return nil, fmt.Errorf("submit: scan event: %w", err)
 		}
 
-		e.StartedAt, _ = time.Parse(time.RFC3339, startedAt)
-		e.EndedAt, _ = time.Parse(time.RFC3339, endedAt)
+		var parseErr error
+		e.StartedAt, parseErr = time.Parse(time.RFC3339, startedAt)
+		if parseErr != nil {
+			return nil, fmt.Errorf("submit: parse started_at %q: %w", startedAt, parseErr)
+		}
+		e.EndedAt, parseErr = time.Parse(time.RFC3339, endedAt)
+		if parseErr != nil {
+			return nil, fmt.Errorf("submit: parse ended_at %q: %w", endedAt, parseErr)
+		}
 		if noteTime.Valid {
-			t, _ := time.Parse(time.RFC3339, noteTime.String)
+			t, parseErr := time.Parse(time.RFC3339, noteTime.String)
+			if parseErr != nil {
+				return nil, fmt.Errorf("submit: parse note_time %q: %w", noteTime.String, parseErr)
+			}
 			e.NoteTime = &t
 		}
 		events = append(events, e)
@@ -208,7 +218,10 @@ func (s *SubmitService) CreateSubmission(eventIDs []int64) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("submit: insert submission: %w", err)
 	}
-	subID, _ := result.LastInsertId()
+	subID, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("submit: last insert id: %w", err)
+	}
 
 	stmt, err := tx.Prepare(`INSERT INTO submission_events (submission_id, event_id) VALUES (?, ?)`)
 	if err != nil {

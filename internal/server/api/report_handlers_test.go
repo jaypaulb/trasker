@@ -37,10 +37,10 @@ func TestReportHandler_Summary(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create test data: user with timesheet
-	plainKey := "trsk_reporttestkey123456789012345"
+	plainKey := "tsk_reporttestkey12345678901234"
 	hash, _ := bcrypt.GenerateFromPassword([]byte(plainKey), bcrypt.DefaultCost)
 	apiKey, err := s.CreateAPIKey(context.Background(), store.CreateAPIKeyParams{
-		UserID: manager.ID, KeyHash: string(hash), KeyPrefix: "trsk_rpt", ExpiresAt: time.Now().Add(60 * 24 * time.Hour),
+		UserID: manager.ID, KeyHash: string(hash), KeyPrefix: plainKey[:8], ExpiresAt: time.Now().Add(60 * 24 * time.Hour),
 	})
 	require.NoError(t, err)
 	device, err := s.UpsertDevice(context.Background(), store.UpsertDeviceParams{

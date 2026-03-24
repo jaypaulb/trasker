@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"log/slog"
 	"os/exec"
 	"strings"
 	"time"
@@ -66,10 +67,12 @@ func (l *ScreenLockListener) listenDBus(ctx context.Context, sender, objectPath,
 	)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		slog.Error("screenlock: failed to get stdout pipe", "sender", sender, "error", err)
 		return
 	}
 
 	if err := cmd.Start(); err != nil {
+		slog.Error("screenlock: failed to start gdbus monitor", "sender", sender, "error", err)
 		return
 	}
 
@@ -97,5 +100,7 @@ func (l *ScreenLockListener) listenDBus(ctx context.Context, sender, objectPath,
 		}
 	}
 
-	_ = cmd.Wait()
+	if err := cmd.Wait(); err != nil {
+		slog.Error("screenlock: gdbus monitor exited with error", "sender", sender, "error", err)
+	}
 }

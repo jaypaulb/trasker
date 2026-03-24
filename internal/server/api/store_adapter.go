@@ -18,9 +18,9 @@ func NewStoreAPIKeyAdapter(s *store.Store) *StoreAPIKeyAdapter {
 	return &StoreAPIKeyAdapter{store: s}
 }
 
-// ListAllActiveAPIKeys returns all non-revoked, non-expired API keys with user roles.
-func (a *StoreAPIKeyAdapter) ListAllActiveAPIKeys(ctx context.Context) ([]auth.APIKeyRecord, error) {
-	return a.store.ListAllActiveAPIKeysWithRoles(ctx)
+// GetActiveAPIKeyByPrefix returns a single active API key matching the given prefix.
+func (a *StoreAPIKeyAdapter) GetActiveAPIKeyByPrefix(ctx context.Context, prefix string) (*auth.APIKeyRecord, error) {
+	return a.store.GetActiveAPIKeyByPrefix(ctx, prefix)
 }
 
 // UpdateAPIKeyLastUsed updates the last_used_at timestamp.

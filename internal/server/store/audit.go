@@ -53,6 +53,8 @@ type AuditLogFilters struct {
 	Action     *string
 	TargetType *string
 	TargetID   *uuid.UUID
+	Limit      int
+	Offset     int
 }
 
 // ListAuditLogs returns audit log entries matching the given filters.
@@ -83,6 +85,13 @@ func (s *Store) ListAuditLogs(ctx context.Context, filters AuditLogFilters) ([]A
 	}
 
 	query += " ORDER BY created_at DESC"
+
+	limit := filters.Limit
+	if limit <= 0 {
+		limit = 100
+	}
+	query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
+	args = append(args, limit, filters.Offset)
 
 	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {

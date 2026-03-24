@@ -51,12 +51,19 @@ type Timer struct {
 }
 
 // NewTimer creates a new pomodoro timer. The changes channel receives state transitions.
-func NewTimer(config Config) *Timer {
+// Returns an error if WorkMins <= 0 or BreakMins < 0.
+func NewTimer(config Config) (*Timer, error) {
+	if config.WorkMins <= 0 {
+		return nil, fmt.Errorf("pomodoro: WorkMins must be > 0, got %d", config.WorkMins)
+	}
+	if config.BreakMins < 0 {
+		return nil, fmt.Errorf("pomodoro: BreakMins must be >= 0, got %d", config.BreakMins)
+	}
 	return &Timer{
 		state:   StateIdle,
 		config:  config,
 		changes: make(chan StateChange, 16),
-	}
+	}, nil
 }
 
 // Changes returns the channel for state transition notifications.

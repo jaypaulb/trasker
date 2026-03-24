@@ -168,7 +168,11 @@ func (a *API) handleCreateTag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, _ := result.LastInsertId()
+	id, err := result.LastInsertId()
+	if err != nil {
+		a.jsonError(w, http.StatusInternalServerError, "failed to get tag id: "+err.Error())
+		return
+	}
 	a.jsonOK(w, map[string]any{"id": id, "name": req.Name, "color": req.Color})
 }
 
@@ -230,7 +234,11 @@ func (a *API) handleAddNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, _ := result.LastInsertId()
+	id, err := result.LastInsertId()
+	if err != nil {
+		a.jsonError(w, http.StatusInternalServerError, "failed to get note id: "+err.Error())
+		return
+	}
 	a.jsonOK(w, map[string]any{"id": id})
 }
 
@@ -302,7 +310,11 @@ func (a *API) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		a.jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	subID, _ := result.LastInsertId()
+	subID, err := result.LastInsertId()
+	if err != nil {
+		a.jsonError(w, http.StatusInternalServerError, "failed to get submission id: "+err.Error())
+		return
+	}
 
 	for _, eid := range req.EventIDs {
 		if _, err := tx.Exec(`INSERT INTO submission_events (submission_id, event_id) VALUES (?, ?)`,
@@ -396,7 +408,11 @@ func (a *API) handleStartPomodoro(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, _ := result.LastInsertId()
+	id, err := result.LastInsertId()
+	if err != nil {
+		a.jsonError(w, http.StatusInternalServerError, "failed to get pomodoro id: "+err.Error())
+		return
+	}
 	a.jsonOK(w, map[string]any{"id": id, "status": "work"})
 }
 

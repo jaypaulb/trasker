@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jaypaulb/trasker/internal/server/auth"
+	"github.com/jaypaulb/trasker/internal/shared/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,7 +27,7 @@ func TestJWT_IssueAndValidate(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, userID, claims.UserID)
 	assert.Equal(t, "alice@example.com", claims.Email)
-	assert.Equal(t, "admin", claims.Role)
+	assert.Equal(t, models.RoleAdmin, claims.Role)
 }
 
 func TestJWT_ExpiredToken(t *testing.T) {
@@ -54,7 +55,7 @@ func TestJWTMiddleware_ValidToken(t *testing.T) {
 	require.NoError(t, err)
 
 	var capturedUserID uuid.UUID
-	var capturedRole string
+	var capturedRole models.Role
 	handler := auth.JWTMiddleware(issuer)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedUserID, _ = auth.UserIDFrom(r.Context())
 		capturedRole, _ = auth.UserRoleFrom(r.Context())
@@ -69,7 +70,7 @@ func TestJWTMiddleware_ValidToken(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Equal(t, userID, capturedUserID)
-	assert.Equal(t, "admin", capturedRole)
+	assert.Equal(t, models.RoleAdmin, capturedRole)
 }
 
 func TestJWTMiddleware_MissingToken(t *testing.T) {

@@ -3,11 +3,14 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jaypaulb/trasker/internal/shared/apikey"
+	"github.com/jaypaulb/trasker/internal/shared/models"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -16,20 +19,20 @@ type APIKeyRecord struct {
 	ID        uuid.UUID
 	UserID    uuid.UUID
 	KeyHash   string
-	Role      string
+	Role      models.Role
 	ExpiresAt time.Time
 	Revoked   bool
 }
 
 // APIKeyLookup is the interface the middleware needs from the store.
 type APIKeyLookup interface {
-	ListAllActiveAPIKeys(ctx context.Context) ([]APIKeyRecord, error)
+	GetActiveAPIKeyByPrefix(ctx context.Context, prefix string) (*APIKeyRecord, error)
 	UpdateAPIKeyLastUsed(ctx context.Context, id uuid.UUID) error
 }
 
 // APIKeyMiddleware returns middleware that authenticates requests via API key.
 // The key is expected in the Authorization header as "Bearer <key>".
-// Because API keys are bcrypt-hashed, we must compare against all active keys.
+// Uses the key prefix to narrow lookup to a single candidate before bcrypt comparison.
 func APIKeyMiddleware(store APIKeyLookup) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -47,21 +50,21 @@ func APIKeyMiddleware(store APIKeyLookup) func(http.Handler) http.Handler {
 
 			plainKey := parts[1]
 
-			keys, err := store.ListAllActiveAPIKeys(r.Context())
-			if err != nil {
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+			// Extract prefix to narrow lookup to a single candidate
+			prefix := apikey.Prefix(plainKey)
+			if prefix == "" {
+				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid API key format"})
 				return
 			}
 
-			var matched *APIKeyRecord
-			for i := range keys {
-				if err := bcrypt.CompareHashAndPassword([]byte(keys[i].KeyHash), []byte(plainKey)); err == nil {
-					matched = &keys[i]
-					break
-				}
+			matched, err := store.GetActiveAPIKeyByPrefix(r.Context(), prefix)
+			if err != nil {
+				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid API key"})
+				return
 			}
 
-			if matched == nil {
+			// Single bcrypt comparison against the matched candidate
+			if err := bcrypt.CompareHashAndPassword([]byte(matched.KeyHash), []byte(plainKey)); err != nil {
 				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid API key"})
 				return
 			}
@@ -79,8 +82,14 @@ func APIKeyMiddleware(store APIKeyLookup) func(http.Handler) http.Handler {
 				return
 			}
 
-			// Update last_used_at (fire-and-forget, don't block the request)
-			go store.UpdateAPIKeyLastUsed(context.Background(), matched.ID)
+			// Update last_used_at with bounded context and error logging
+			updateCtx, updateCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			go func() {
+				defer updateCancel()
+				if err := store.UpdateAPIKeyLastUsed(updateCtx, matched.ID); err != nil {
+					slog.Warn("failed to update API key last_used_at", "key_id", matched.ID, "error", err)
+				}
+			}()
 
 			// Set context values
 			ctx := r.Context()
@@ -97,5 +106,7 @@ func APIKeyMiddleware(store APIKeyLookup) func(http.Handler) http.Handler {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		slog.Error("failed to encode JSON response", "error", err)
+	}
 }

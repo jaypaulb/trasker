@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"runtime"
 	"syscall"
+	"time"
 
 	_ "modernc.org/sqlite"
 
@@ -81,7 +82,11 @@ func main() {
 	}
 
 	// Pomodoro
-	pomodoroTimer := pomodoro.NewTimer(pomodoro.DefaultConfig())
+	pomodoroTimer, err := pomodoro.NewTimer(pomodoro.DefaultConfig())
+	if err != nil {
+		logger.Error("failed to init pomodoro timer", "error", err)
+		os.Exit(1)
+	}
 
 	// Sync client + queue
 	syncClient := syncpkg.NewClient(serverURL, apiKey)
@@ -159,7 +164,9 @@ func main() {
 		<-sigCh
 		logger.Info("received shutdown signal")
 		cancel()
-		webServer.Stop(ctx)
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		webServer.Stop(shutdownCtx)
 		syncQueue.Stop()
 		trayActions.tray.Quit()
 	}()
