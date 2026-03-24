@@ -218,7 +218,10 @@ func (s *SubmitService) CreateSubmission(eventIDs []int64) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("submit: insert submission: %w", err)
 	}
-	subID, _ := result.LastInsertId()
+	subID, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("submit: last insert id: %w", err)
+	}
 
 	stmt, err := tx.Prepare(`INSERT INTO submission_events (submission_id, event_id) VALUES (?, ?)`)
 	if err != nil {
