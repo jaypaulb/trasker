@@ -19,10 +19,28 @@ DIST := dist
 CLIENT_TARGETS := linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64
 SERVER_TARGETS := linux/amd64 linux/arm64
 
-.PHONY: all clean test vet client server client-all server-all
+.PHONY: all clean test vet client server client-all server-all client-ui build-client build-client-dev
 
 ## Default: build client and server for the current platform
 all: client server
+
+## Build Svelte SPA and embed into webui/static
+client-ui:
+	cd web/client-ui && npm ci && npm run build
+	rm -rf internal/client/webui/static
+	cp -r web/client-ui/build internal/client/webui/static
+
+## Build client binary with embedded SPA (production)
+build-client: client-ui
+	go build -ldflags "$(LDFLAGS) \
+		-X main.version=$(VERSION) \
+		-X main.serverURL=$(SERVER_URL) \
+		-X main.apiKey=$(API_KEY)" \
+		-o bin/trasker-client ./cmd/trasker-client
+
+## Development build (no embedded UI rebuild)
+build-client-dev:
+	go build -o bin/trasker-client ./cmd/trasker-client
 
 ## Build client for current platform
 client:
