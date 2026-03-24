@@ -30,15 +30,15 @@ func run(logger *slog.Logger) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Required config
-	dbURL := mustEnv("DATABASE_URL")
+	// Required config — check TRASKER_* prefix first (Docker), then unprefixed (local dev)
+	dbURL := buildDatabaseURL()
 	listenAddr := envOr("LISTEN_ADDR", ":8080")
-	jwtSecret := mustEnv("JWT_SECRET")
+	jwtSecret := mustEnvMulti("TRASKER_JWT_SECRET", "JWT_SECRET")
 
-	// Optional OIDC config
-	entraTenant := os.Getenv("ENTRA_TENANT_ID")
-	entraClient := os.Getenv("ENTRA_CLIENT_ID")
-	entraSecret := os.Getenv("ENTRA_CLIENT_SECRET")
+	// Optional OIDC config — check TRASKER_* prefix first, then unprefixed
+	entraTenant := envOrMulti("TRASKER_ENTRA_TENANT", "ENTRA_TENANT_ID")
+	entraClient := envOrMulti("TRASKER_ENTRA_CLIENT", "ENTRA_CLIENT_ID")
+	entraSecret := envOrMulti("TRASKER_ENTRA_SECRET", "ENTRA_CLIENT_SECRET")
 	entraRedirect := os.Getenv("ENTRA_REDIRECT_URL")
 
 	// Database
@@ -137,13 +137,54 @@ func run(logger *slog.Logger) error {
 	return nil
 }
 
-func mustEnv(key string) string {
-	val := os.Getenv(key)
-	if val == "" {
-		fmt.Fprintf(os.Stderr, "required environment variable %s is not set\n", key)
-		os.Exit(1)
+// buildDatabaseURL returns a PostgreSQL connection string.
+// It checks DATABASE_URL first, then falls back to constructing one from
+// the individual TRASKER_DB_* env vars (as set by docker-compose).
+func buildDatabaseURL() string {
+	if url := os.Getenv("DATABASE_URL"); url != "" {
+		return url
 	}
-	return val
+
+	host := os.Getenv("TRASKER_DB_HOST")
+	port := os.Getenv("TRASKER_DB_PORT")
+	name := os.Getenv("TRASKER_DB_NAME")
+	user := os.Getenv("TRASKER_DB_USER")
+	pass := os.Getenv("TRASKER_DB_PASSWORD")
+
+	if host != "" && user != "" && name != "" {
+		if port == "" {
+			port = "5432"
+		}
+		return fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", user, pass, host, port, name)
+	}
+
+	fmt.Fprintf(os.Stderr, "required: either DATABASE_URL or TRASKER_DB_HOST/USER/NAME env vars\n")
+	os.Exit(1)
+	return ""
+}
+
+// mustEnvMulti checks multiple env var names in order, returning the first non-empty value.
+// Exits if none are set.
+func mustEnvMulti(keys ...string) string {
+	for _, key := range keys {
+		if val := os.Getenv(key); val != "" {
+			return val
+		}
+	}
+	fmt.Fprintf(os.Stderr, "required environment variable (one of %v) is not set\n", keys)
+	os.Exit(1)
+	return ""
+}
+
+// envOrMulti checks multiple env var names in order, returning the first non-empty value,
+// or empty string if none are set.
+func envOrMulti(keys ...string) string {
+	for _, key := range keys {
+		if val := os.Getenv(key); val != "" {
+			return val
+		}
+	}
+	return ""
 }
 
 func envOr(key, fallback string) string {

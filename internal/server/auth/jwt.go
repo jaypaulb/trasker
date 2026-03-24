@@ -2,6 +2,7 @@ package auth
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -92,7 +93,8 @@ func JWTMiddleware(issuer *JWTIssuer) func(http.Handler) http.Handler {
 
 			claims, err := issuer.Validate(parts[1])
 			if err != nil {
-				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})
+				slog.Warn("JWT validation failed", "error", err)
+				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid or expired token"})
 				return
 			}
 

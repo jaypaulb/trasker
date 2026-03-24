@@ -19,7 +19,12 @@ func adminDeleteEntryHandler(deps *Dependencies) http.HandlerFunc {
 			return
 		}
 
-		adminID, _ := auth.UserIDFrom(r.Context())
+		adminID, ok := auth.UserIDFrom(r.Context())
+		if !ok {
+			deps.Logger.Error("admin user ID missing from context")
+			respondError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
 
 		// Get entry before deleting (for audit log)
 		entry, err := deps.Store.GetTimesheetEntryByID(r.Context(), entryID)
@@ -56,7 +61,12 @@ func adminEditEntryHandler(deps *Dependencies) http.HandlerFunc {
 			return
 		}
 
-		adminID, _ := auth.UserIDFrom(r.Context())
+		adminID, ok := auth.UserIDFrom(r.Context())
+		if !ok {
+			deps.Logger.Error("admin user ID missing from context")
+			respondError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
 
 		// Get old entry for audit
 		oldEntry, err := deps.Store.GetTimesheetEntryByID(r.Context(), entryID)
@@ -117,7 +127,12 @@ func adminRevokeKeyHandler(deps *Dependencies) http.HandlerFunc {
 			return
 		}
 
-		adminID, _ := auth.UserIDFrom(r.Context())
+		adminID, ok := auth.UserIDFrom(r.Context())
+		if !ok {
+			deps.Logger.Error("admin user ID missing from context")
+			respondError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
 
 		if err := deps.Store.RevokeAPIKey(r.Context(), keyID); err != nil {
 			respondError(w, http.StatusNotFound, "API key not found")
