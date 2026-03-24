@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -49,8 +50,12 @@ func timesheetSubmitHandler(deps *Dependencies) http.HandlerFunc {
 		// Resolve device
 		device, err := deps.Store.GetDeviceByClientID(r.Context(), req.ClientDeviceID, apiKeyID)
 		if err != nil {
-			deps.Logger.Error("failed to resolve device", "error", err, "client_device_id", req.ClientDeviceID)
-			respondError(w, http.StatusBadRequest, "device not registered")
+			if errors.Is(err, store.ErrNotFound) {
+				respondError(w, http.StatusBadRequest, "device not registered")
+			} else {
+				deps.Logger.Error("failed to resolve device", "error", err, "client_device_id", req.ClientDeviceID)
+				respondError(w, http.StatusInternalServerError, "failed to look up device")
+			}
 			return
 		}
 

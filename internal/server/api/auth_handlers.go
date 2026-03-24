@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/jaypaulb/trasker/internal/server/auth"
@@ -61,7 +62,12 @@ func authLoginHandler(deps *Dependencies) http.HandlerFunc {
 		}
 
 		user, err := deps.Store.GetUserByEntraOID(r.Context(), userInfo.EntraOID)
-		if err != nil {
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			deps.Logger.Error("failed to look up user by entra OID", "error", err)
+			respondError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if errors.Is(err, store.ErrNotFound) {
 			user, err = deps.Store.CreateUser(r.Context(), store.CreateUserParams{
 				EntraOID:    userInfo.EntraOID,
 				Email:       userInfo.Email,

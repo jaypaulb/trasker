@@ -13,7 +13,11 @@ import (
 
 func reportSummaryHandler(deps *Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		filters := parseReportFilters(r)
+		filters, err := parseReportFilters(r)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 
 		summary, err := deps.Store.GetReportSummary(r.Context(), filters)
 		if err != nil {
@@ -38,7 +42,11 @@ func reportSummaryHandler(deps *Dependencies) http.HandlerFunc {
 
 func reportExportHandler(deps *Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		filters := parseReportFilters(r)
+		filters, err := parseReportFilters(r)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 
 		rows, err := deps.Store.GetReportExport(r.Context(), filters)
 		if err != nil {
@@ -52,10 +60,12 @@ func reportExportHandler(deps *Dependencies) http.HandlerFunc {
 		w.WriteHeader(http.StatusOK)
 
 		writer := csv.NewWriter(w)
-		defer writer.Flush()
 
 		// Header row
-		writer.Write([]string{"Email", "Name", "Tag", "Started", "Ended", "Duration (s)", "Duration (h)", "Notes", "App Summary", "Submitted"})
+		if err := writer.Write([]string{"Email", "Name", "Tag", "Started", "Ended", "Duration (s)", "Duration (h)", "Notes", "App Summary", "Submitted"}); err != nil {
+			deps.Logger.Error("failed to write CSV header", "error", err)
+			return
+		}
 
 		for _, row := range rows {
 			notes := ""
@@ -67,7 +77,7 @@ func reportExportHandler(deps *Dependencies) http.HandlerFunc {
 				appSummary = *row.AppSummary
 			}
 
-			writer.Write([]string{
+			if err := writer.Write([]string{
 				row.UserEmail,
 				row.DisplayName,
 				row.Tag,
@@ -78,29 +88,43 @@ func reportExportHandler(deps *Dependencies) http.HandlerFunc {
 				notes,
 				appSummary,
 				row.SubmittedAt.Format(time.RFC3339),
-			})
+			}); err != nil {
+				deps.Logger.Error("failed to write CSV row", "error", err)
+				return
+			}
+		}
+
+		writer.Flush()
+		if err := writer.Error(); err != nil {
+			deps.Logger.Error("CSV flush failed", "error", err)
 		}
 	}
 }
 
-func parseReportFilters(r *http.Request) store.ReportFilters {
+func parseReportFilters(r *http.Request) (store.ReportFilters, error) {
 	filters := store.ReportFilters{}
 
 	if userIDStr := r.URL.Query().Get("user_id"); userIDStr != "" {
-		if uid, err := uuid.Parse(userIDStr); err == nil {
-			filters.UserID = &uid
+		uid, err := uuid.Parse(userIDStr)
+		if err != nil {
+			return filters, fmt.Errorf("invalid user_id: must be a valid UUID")
 		}
+		filters.UserID = &uid
 	}
 	if fromStr := r.URL.Query().Get("from"); fromStr != "" {
-		if from, err := time.Parse(time.RFC3339, fromStr); err == nil {
-			filters.From = &from
+		from, err := time.Parse(time.RFC3339, fromStr)
+		if err != nil {
+			return filters, fmt.Errorf("invalid from: must be RFC3339 format")
 		}
+		filters.From = &from
 	}
 	if toStr := r.URL.Query().Get("to"); toStr != "" {
-		if to, err := time.Parse(time.RFC3339, toStr); err == nil {
-			filters.To = &to
+		to, err := time.Parse(time.RFC3339, toStr)
+		if err != nil {
+			return filters, fmt.Errorf("invalid to: must be RFC3339 format")
 		}
+		filters.To = &to
 	}
 
-	return filters
+	return filters, nil
 }

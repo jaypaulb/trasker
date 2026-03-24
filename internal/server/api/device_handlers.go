@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -112,8 +113,12 @@ func deviceUpdateHandler(deps *Dependencies) http.HandlerFunc {
 
 		device, err := deps.Store.UpdateDeviceName(r.Context(), deviceID, req.DeviceName)
 		if err != nil {
-			deps.Logger.Error("failed to update device name", "error", err, "device_id", deviceID)
-			respondError(w, http.StatusNotFound, "device not found")
+			if errors.Is(err, store.ErrNotFound) {
+				respondError(w, http.StatusNotFound, "device not found")
+			} else {
+				deps.Logger.Error("failed to update device name", "error", err, "device_id", deviceID)
+				respondError(w, http.StatusInternalServerError, "failed to update device")
+			}
 			return
 		}
 

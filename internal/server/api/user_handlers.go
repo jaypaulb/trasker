@@ -1,10 +1,12 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jaypaulb/trasker/internal/server/store"
 )
 
 var validRoles = map[string]bool{"member": true, "manager": true, "admin": true}
@@ -55,8 +57,12 @@ func userUpdateRoleHandler(deps *Dependencies) http.HandlerFunc {
 
 		user, err := deps.Store.UpdateUserRole(r.Context(), userID, req.Role)
 		if err != nil {
-			deps.Logger.Error("failed to update user role", "error", err, "user_id", userID)
-			respondError(w, http.StatusNotFound, "user not found")
+			if errors.Is(err, store.ErrNotFound) {
+				respondError(w, http.StatusNotFound, "user not found")
+			} else {
+				deps.Logger.Error("failed to update user role", "error", err, "user_id", userID)
+				respondError(w, http.StatusInternalServerError, "failed to update user role")
+			}
 			return
 		}
 

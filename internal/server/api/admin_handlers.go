@@ -3,6 +3,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -29,8 +30,12 @@ func adminDeleteEntryHandler(deps *Dependencies) http.HandlerFunc {
 		// Get entry before deleting (for audit log)
 		entry, err := deps.Store.GetTimesheetEntryByID(r.Context(), entryID)
 		if err != nil {
-			deps.Logger.Error("failed to get entry for deletion", "error", err, "entry_id", entryID)
-			respondError(w, http.StatusNotFound, "entry not found")
+			if errors.Is(err, store.ErrNotFound) {
+				respondError(w, http.StatusNotFound, "entry not found")
+			} else {
+				deps.Logger.Error("failed to get entry for deletion", "error", err, "entry_id", entryID)
+				respondError(w, http.StatusInternalServerError, "failed to look up entry")
+			}
 			return
 		}
 
@@ -42,14 +47,16 @@ func adminDeleteEntryHandler(deps *Dependencies) http.HandlerFunc {
 			return
 		}
 
-		// Audit log (best-effort; ignore error)
-		deps.Store.CreateAuditLog(r.Context(), store.CreateAuditLogParams{
+		// Audit log
+		if _, err := deps.Store.CreateAuditLog(r.Context(), store.CreateAuditLogParams{
 			AdminID:    adminID,
 			Action:     "entry.delete",
 			TargetType: "timesheet_entry",
 			TargetID:   entryID,
 			OldValue:   oldValue,
-		})
+		}); err != nil {
+			deps.Logger.Error("failed to write audit log", "action", "entry.delete", "error", err)
+		}
 
 		respondJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 	}
@@ -73,8 +80,12 @@ func adminEditEntryHandler(deps *Dependencies) http.HandlerFunc {
 		// Get old entry for audit
 		oldEntry, err := deps.Store.GetTimesheetEntryByID(r.Context(), entryID)
 		if err != nil {
-			deps.Logger.Error("failed to get entry for edit", "error", err, "entry_id", entryID)
-			respondError(w, http.StatusNotFound, "entry not found")
+			if errors.Is(err, store.ErrNotFound) {
+				respondError(w, http.StatusNotFound, "entry not found")
+			} else {
+				deps.Logger.Error("failed to get entry for edit", "error", err, "entry_id", entryID)
+				respondError(w, http.StatusInternalServerError, "failed to look up entry")
+			}
 			return
 		}
 		oldValue, _ := json.Marshal(oldEntry)
@@ -102,15 +113,17 @@ func adminEditEntryHandler(deps *Dependencies) http.HandlerFunc {
 
 		newValue, _ := json.Marshal(updated)
 
-		// Audit log (best-effort; ignore error)
-		deps.Store.CreateAuditLog(r.Context(), store.CreateAuditLogParams{
+		// Audit log
+		if _, err := deps.Store.CreateAuditLog(r.Context(), store.CreateAuditLogParams{
 			AdminID:    adminID,
 			Action:     "entry.update",
 			TargetType: "timesheet_entry",
 			TargetID:   entryID,
 			OldValue:   oldValue,
 			NewValue:   newValue,
-		})
+		}); err != nil {
+			deps.Logger.Error("failed to write audit log", "action", "entry.update", "error", err)
+		}
 
 		respondJSON(w, http.StatusOK, map[string]any{
 			"id":         updated.ID,
@@ -139,18 +152,24 @@ func adminRevokeKeyHandler(deps *Dependencies) http.HandlerFunc {
 		}
 
 		if err := deps.Store.RevokeAPIKey(r.Context(), keyID); err != nil {
-			deps.Logger.Error("failed to revoke API key", "error", err, "key_id", keyID)
-			respondError(w, http.StatusNotFound, "API key not found")
+			if errors.Is(err, store.ErrNotFound) {
+				respondError(w, http.StatusNotFound, "API key not found")
+			} else {
+				deps.Logger.Error("failed to revoke API key", "error", err, "key_id", keyID)
+				respondError(w, http.StatusInternalServerError, "failed to revoke API key")
+			}
 			return
 		}
 
-		// Audit log (best-effort; ignore error)
-		deps.Store.CreateAuditLog(r.Context(), store.CreateAuditLogParams{
+		// Audit log
+		if _, err := deps.Store.CreateAuditLog(r.Context(), store.CreateAuditLogParams{
 			AdminID:    adminID,
 			Action:     "key.revoke",
 			TargetType: "api_key",
 			TargetID:   keyID,
-		})
+		}); err != nil {
+			deps.Logger.Error("failed to write audit log", "action", "key.revoke", "error", err)
+		}
 
 		respondJSON(w, http.StatusOK, map[string]string{"status": "revoked"})
 	}
@@ -196,8 +215,12 @@ func adminGetSettingsHandler(deps *Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		settings, err := deps.Store.GetOrgSettings(r.Context())
 		if err != nil {
-			deps.Logger.Error("failed to get org settings", "error", err)
-			respondError(w, http.StatusNotFound, "org settings not configured")
+			if errors.Is(err, store.ErrNotFound) {
+				respondError(w, http.StatusNotFound, "org settings not configured")
+			} else {
+				deps.Logger.Error("failed to get org settings", "error", err)
+				respondError(w, http.StatusInternalServerError, "failed to get settings")
+			}
 			return
 		}
 
