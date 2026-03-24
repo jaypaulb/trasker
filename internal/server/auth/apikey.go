@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jaypaulb/trasker/internal/shared/apikey"
+	"github.com/jaypaulb/trasker/internal/shared/models"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -18,7 +19,7 @@ type APIKeyRecord struct {
 	ID        uuid.UUID
 	UserID    uuid.UUID
 	KeyHash   string
-	Role      string
+	Role      models.Role
 	ExpiresAt time.Time
 	Revoked   bool
 }

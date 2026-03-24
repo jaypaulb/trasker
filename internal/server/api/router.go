@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jaypaulb/trasker/internal/server/auth"
 	"github.com/jaypaulb/trasker/internal/server/store"
+	"github.com/jaypaulb/trasker/internal/shared/models"
 )
 
 // Dependencies holds all the dependencies the API handlers need.
@@ -61,25 +62,25 @@ func NewRouter(deps *Dependencies) http.Handler {
 				r.Post("/auth/refresh", authRefreshHandler(deps))
 
 				// Timesheets (dashboard view)
-				r.Get("/timesheets/team", auth.RequireRole("manager", "admin")(http.HandlerFunc(timesheetListTeamHandler(deps))).ServeHTTP)
+				r.Get("/timesheets/team", auth.RequireRole(models.RoleManager, models.RoleAdmin)(http.HandlerFunc(timesheetListTeamHandler(deps))).ServeHTTP)
 
 				// Users (admin)
 				r.Group(func(r chi.Router) {
-					r.Use(auth.RequireRole("admin"))
+					r.Use(auth.RequireRole(models.RoleAdmin))
 					r.Get("/users", userListHandler(deps))
 					r.Patch("/users/{id}", userUpdateRoleHandler(deps))
 				})
 
 				// Reports (manager+)
 				r.Group(func(r chi.Router) {
-					r.Use(auth.RequireRole("manager", "admin"))
+					r.Use(auth.RequireRole(models.RoleManager, models.RoleAdmin))
 					r.Get("/reports/summary", reportSummaryHandler(deps))
 					r.Get("/reports/export", reportExportHandler(deps))
 				})
 
 				// Admin
 				r.Group(func(r chi.Router) {
-					r.Use(auth.RequireRole("admin"))
+					r.Use(auth.RequireRole(models.RoleAdmin))
 					r.Delete("/admin/entries/{id}", adminDeleteEntryHandler(deps))
 					r.Patch("/admin/entries/{id}", adminEditEntryHandler(deps))
 					r.Post("/admin/keys/{id}/revoke", adminRevokeKeyHandler(deps))

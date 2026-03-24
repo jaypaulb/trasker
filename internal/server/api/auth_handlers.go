@@ -6,6 +6,7 @@ import (
 
 	"github.com/jaypaulb/trasker/internal/server/auth"
 	"github.com/jaypaulb/trasker/internal/server/store"
+	"github.com/jaypaulb/trasker/internal/shared/models"
 )
 
 func authLoginHandler(deps *Dependencies) http.HandlerFunc {
@@ -80,7 +81,7 @@ func authLoginHandler(deps *Dependencies) http.HandlerFunc {
 			}
 		}
 
-		token, err := deps.JWTIssuer.Issue(user.ID, user.Email, user.Role)
+		token, err := deps.JWTIssuer.Issue(user.ID, user.Email, models.Role(user.Role))
 		if err != nil {
 			deps.Logger.Error("failed to issue token", "error", err, "user_id", user.ID)
 			respondError(w, http.StatusInternalServerError, "failed to issue token")
@@ -118,7 +119,7 @@ func authRefreshHandler(deps *Dependencies) http.HandlerFunc {
 				return
 			}
 			email = user.Email
-			role = user.Role
+			role = models.Role(user.Role)
 		}
 
 		token, err := deps.JWTIssuer.Issue(userID, email, role)

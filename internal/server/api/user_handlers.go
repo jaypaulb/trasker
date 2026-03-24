@@ -7,9 +7,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jaypaulb/trasker/internal/server/store"
+	"github.com/jaypaulb/trasker/internal/shared/models"
 )
-
-var validRoles = map[string]bool{"member": true, "manager": true, "admin": true}
 
 func userListHandler(deps *Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -51,7 +50,7 @@ func userUpdateRoleHandler(deps *Dependencies) http.HandlerFunc {
 			respondError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
-		if !validRoles[req.Role] {
+		if !models.ValidRoles[models.Role(req.Role)] {
 			respondError(w, http.StatusBadRequest, "role must be one of: member, manager, admin")
 			return
 		}

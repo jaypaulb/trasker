@@ -21,3 +21,28 @@ type HealthResponse struct {
 	Status  string `json:"status"`
 	Version string `json:"version"`
 }
+
+// Role represents a user role in the system.
+type Role string
+
+const (
+	RoleMember  Role = "member"
+	RoleManager Role = "manager"
+	RoleAdmin   Role = "admin"
+)
+
+// ValidRoles is the set of allowed role values.
+var ValidRoles = map[Role]bool{
+	RoleMember:  true,
+	RoleManager: true,
+	RoleAdmin:   true,
+}
+
+// OSType represents a client operating system.
+type OSType string
+
+const (
+	OSLinux   OSType = "linux"
+	OSDarwin  OSType = "darwin"
+	OSWindows OSType = "windows"
+)

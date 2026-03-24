@@ -2,12 +2,14 @@ package auth
 
 import (
 	"net/http"
+
+	"github.com/jaypaulb/trasker/internal/shared/models"
 )
 
 // RequireRole returns middleware that ensures the authenticated user has one of the specified roles.
 // Must be chained AFTER an auth middleware (JWT or API key) that sets the role in context.
-func RequireRole(allowedRoles ...string) func(http.Handler) http.Handler {
-	allowed := make(map[string]bool, len(allowedRoles))
+func RequireRole(allowedRoles ...models.Role) func(http.Handler) http.Handler {
+	allowed := make(map[models.Role]bool, len(allowedRoles))
 	for _, r := range allowedRoles {
 		allowed[r] = true
 	}
