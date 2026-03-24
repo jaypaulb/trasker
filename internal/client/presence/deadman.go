@@ -3,6 +3,8 @@ package presence
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -27,20 +29,32 @@ type Deadman struct {
 
 // NewDeadman creates a deadman's switch with the given escalation intervals
 // and countdown duration. Production defaults: intervals=[30,45,60,90,120] minutes,
-// countdown=90 seconds.
-func NewDeadman(intervals []time.Duration, countdownDuration time.Duration) *Deadman {
+// countdown=90 seconds. Returns an error if intervals is empty or any duration is <= 0.
+func NewDeadman(intervals []time.Duration, countdownDuration time.Duration) (*Deadman, error) {
+	if len(intervals) == 0 {
+		return nil, errors.New("deadman: intervals must not be empty")
+	}
+	for i, d := range intervals {
+		if d <= 0 {
+			return nil, fmt.Errorf("deadman: interval[%d] must be > 0, got %v", i, d)
+		}
+	}
+	if countdownDuration <= 0 {
+		return nil, fmt.Errorf("deadman: countdownDuration must be > 0, got %v", countdownDuration)
+	}
 	return &Deadman{
 		intervals:         intervals,
 		countdownDuration: countdownDuration,
 		states:            make(chan StateChange, 16),
 		ackCh:             make(chan struct{}, 1),
 		resetCh:           make(chan struct{}, 1),
-	}
+	}, nil
 }
 
 // DefaultDeadman creates a deadman's switch with production defaults.
 func DefaultDeadman() *Deadman {
-	return NewDeadman(
+	// Safe to ignore error: these are known-valid production defaults.
+	dm, _ := NewDeadman(
 		[]time.Duration{
 			30 * time.Minute,
 			45 * time.Minute,
@@ -50,6 +64,7 @@ func DefaultDeadman() *Deadman {
 		},
 		90*time.Second,
 	)
+	return dm
 }
 
 // Start begins the deadman's switch timer loop.

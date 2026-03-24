@@ -11,10 +11,13 @@ import (
 
 func TestDeadman_FiresAfterInterval(t *testing.T) {
 	// Use very short intervals for testing
-	dm := presence.NewDeadman(
+	dm, err := presence.NewDeadman(
 		[]time.Duration{50 * time.Millisecond, 100 * time.Millisecond},
 		200 * time.Millisecond, // countdown duration
 	)
+	if err != nil {
+		t.Fatalf("NewDeadman: %v", err)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -35,10 +38,13 @@ func TestDeadman_FiresAfterInterval(t *testing.T) {
 }
 
 func TestDeadman_AcknowledgeEscalates(t *testing.T) {
-	dm := presence.NewDeadman(
+	dm, err := presence.NewDeadman(
 		[]time.Duration{50 * time.Millisecond, 100 * time.Millisecond},
 		5 * time.Second, // long countdown so it doesn't expire
 	)
+	if err != nil {
+		t.Fatalf("NewDeadman: %v", err)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -81,10 +87,13 @@ func TestDeadman_AcknowledgeEscalates(t *testing.T) {
 }
 
 func TestDeadman_CountdownExpiresToPaused(t *testing.T) {
-	dm := presence.NewDeadman(
+	dm, err := presence.NewDeadman(
 		[]time.Duration{50 * time.Millisecond},
 		100 * time.Millisecond, // short countdown
 	)
+	if err != nil {
+		t.Fatalf("NewDeadman: %v", err)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -115,10 +124,13 @@ func TestDeadman_CountdownExpiresToPaused(t *testing.T) {
 }
 
 func TestDeadman_ResetOnFocusChange(t *testing.T) {
-	dm := presence.NewDeadman(
+	dm, err := presence.NewDeadman(
 		[]time.Duration{100 * time.Millisecond, 200 * time.Millisecond},
 		5 * time.Second,
 	)
+	if err != nil {
+		t.Fatalf("NewDeadman: %v", err)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -169,4 +181,41 @@ func TestDeadman_ResetOnFocusChange(t *testing.T) {
 	}
 
 	dm.Stop()
+}
+
+func TestNewDeadman_RejectsInvalidConfig(t *testing.T) {
+	// Empty intervals
+	_, err := presence.NewDeadman(nil, 90*time.Second)
+	if err == nil {
+		t.Error("expected error for nil intervals")
+	}
+
+	_, err = presence.NewDeadman([]time.Duration{}, 90*time.Second)
+	if err == nil {
+		t.Error("expected error for empty intervals")
+	}
+
+	// Zero duration interval
+	_, err = presence.NewDeadman([]time.Duration{0}, 90*time.Second)
+	if err == nil {
+		t.Error("expected error for zero interval")
+	}
+
+	// Negative interval
+	_, err = presence.NewDeadman([]time.Duration{-1 * time.Second}, 90*time.Second)
+	if err == nil {
+		t.Error("expected error for negative interval")
+	}
+
+	// Zero countdown
+	_, err = presence.NewDeadman([]time.Duration{30 * time.Second}, 0)
+	if err == nil {
+		t.Error("expected error for zero countdown")
+	}
+
+	// Valid config should work
+	_, err = presence.NewDeadman([]time.Duration{30 * time.Second}, 90*time.Second)
+	if err != nil {
+		t.Errorf("unexpected error for valid config: %v", err)
+	}
 }

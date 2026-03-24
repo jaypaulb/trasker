@@ -82,7 +82,11 @@ func main() {
 	}
 
 	// Pomodoro
-	pomodoroTimer := pomodoro.NewTimer(pomodoro.DefaultConfig())
+	pomodoroTimer, err := pomodoro.NewTimer(pomodoro.DefaultConfig())
+	if err != nil {
+		logger.Error("failed to init pomodoro timer", "error", err)
+		os.Exit(1)
+	}
 
 	// Sync client + queue
 	syncClient := syncpkg.NewClient(serverURL, apiKey)
