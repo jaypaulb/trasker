@@ -1,0 +1,57 @@
+# ============================================
+# Stage 1: Build the Go API server binary
+# ============================================
+FROM golang:1.23-alpine AS builder
+
+RUN apk add --no-cache git
+
+WORKDIR /src
+
+# Cache Go modules
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source
+COPY . .
+
+# Build server binary
+# CGO_ENABLED=0 for static binary (no CGo dependencies in server)
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-s -w" \
+    -trimpath \
+    -o /out/trasker-server \
+    ./cmd/trasker-server
+
+# ============================================
+# Stage 2: Build the Svelte SPA (for embedding or reference)
+# ============================================
+# Note: The SPA is served by nginx in docker-compose, not embedded in the Go binary.
+# This stage is here for build pipeline completeness — the built assets
+# can be copied to the nginx volume.
+
+# ============================================
+# Stage 3: Runtime
+# ============================================
+FROM alpine:3.20
+
+RUN apk add --no-cache ca-certificates tzdata
+
+# Create non-root user
+RUN addgroup -g 1001 trasker && \
+    adduser -u 1001 -G trasker -D trasker
+
+WORKDIR /app
+
+COPY --from=builder /out/trasker-server .
+
+# Copy migrations for the server to run on startup
+COPY migrations/ ./migrations/
+
+# Build cache directory for cross-compiled client binaries
+RUN mkdir -p /tmp/trasker-builds && chown trasker:trasker /tmp/trasker-builds
+
+USER trasker
+
+EXPOSE 8080
+
+ENTRYPOINT ["./trasker-server"]
