@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"runtime"
 	"syscall"
+	"time"
 
 	_ "modernc.org/sqlite"
 
@@ -159,7 +160,9 @@ func main() {
 		<-sigCh
 		logger.Info("received shutdown signal")
 		cancel()
-		webServer.Stop(ctx)
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		webServer.Stop(shutdownCtx)
 		syncQueue.Stop()
 		trayActions.tray.Quit()
 	}()
