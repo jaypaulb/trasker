@@ -116,7 +116,8 @@ func timesheetListOwnHandler(deps *Dependencies) http.HandlerFunc {
 			return
 		}
 
-		timesheets, err := deps.Store.ListTimesheetsByUser(r.Context(), userID)
+		limit, offset := parsePagination(r)
+		timesheets, err := deps.Store.ListTimesheetsByUser(r.Context(), userID, store.TimesheetFilters{Limit: limit, Offset: offset})
 		if err != nil {
 			deps.Logger.Error("failed to list timesheets", "error", err, "user_id", userID)
 			respondError(w, http.StatusInternalServerError, "failed to list timesheets")
@@ -138,7 +139,8 @@ func timesheetListOwnHandler(deps *Dependencies) http.HandlerFunc {
 
 func timesheetListTeamHandler(deps *Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		timesheets, err := deps.Store.ListTimesheetsAll(r.Context(), store.TimesheetFilters{})
+		limit, offset := parsePagination(r)
+		timesheets, err := deps.Store.ListTimesheetsAll(r.Context(), store.TimesheetFilters{Limit: limit, Offset: offset})
 		if err != nil {
 			deps.Logger.Error("failed to list team timesheets", "error", err)
 			respondError(w, http.StatusInternalServerError, "failed to list team timesheets")

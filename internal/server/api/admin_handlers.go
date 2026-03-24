@@ -177,7 +177,11 @@ func adminRevokeKeyHandler(deps *Dependencies) http.HandlerFunc {
 
 func adminAuditLogHandler(deps *Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		filters := store.AuditLogFilters{}
+		limit, offset := parsePagination(r)
+		filters := store.AuditLogFilters{
+			Limit:  limit,
+			Offset: offset,
+		}
 
 		if action := r.URL.Query().Get("action"); action != "" {
 			filters.Action = &action

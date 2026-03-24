@@ -98,11 +98,28 @@ func (s *Store) UpdateUserRole(ctx context.Context, id uuid.UUID, role string) (
 	return &u, nil
 }
 
-// ListUsers returns all users ordered by display name.
-func (s *Store) ListUsers(ctx context.Context) ([]User, error) {
+// UserListFilters holds optional pagination for listing users.
+type UserListFilters struct {
+	Limit  int
+	Offset int
+}
+
+// ListUsers returns users ordered by display name, with pagination.
+func (s *Store) ListUsers(ctx context.Context, opts ...UserListFilters) ([]User, error) {
+	limit := 100
+	offset := 0
+	if len(opts) > 0 {
+		if opts[0].Limit > 0 {
+			limit = opts[0].Limit
+		}
+		offset = opts[0].Offset
+	}
+
 	rows, err := s.pool.Query(ctx,
 		`SELECT id, entra_oid, email, display_name, role, created_at, updated_at
-		 FROM users ORDER BY display_name`)
+		 FROM users ORDER BY display_name LIMIT $1 OFFSET $2`,
+		limit, offset,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("listing users: %w", err)
 	}

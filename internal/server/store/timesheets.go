@@ -56,6 +56,8 @@ type TimesheetFilters struct {
 	UserID *uuid.UUID
 	From   *time.Time
 	To     *time.Time
+	Limit  int
+	Offset int
 }
 
 // CreateTimesheet inserts a timesheet and its entries in a transaction.
@@ -138,11 +140,20 @@ func (s *Store) GetTimesheetByID(ctx context.Context, id uuid.UUID) (*Timesheet,
 }
 
 // ListTimesheetsByUser returns timesheets for a specific user, newest first.
-func (s *Store) ListTimesheetsByUser(ctx context.Context, userID uuid.UUID) ([]Timesheet, error) {
+func (s *Store) ListTimesheetsByUser(ctx context.Context, userID uuid.UUID, opts ...TimesheetFilters) ([]Timesheet, error) {
+	limit := 100
+	offset := 0
+	if len(opts) > 0 {
+		if opts[0].Limit > 0 {
+			limit = opts[0].Limit
+		}
+		offset = opts[0].Offset
+	}
+
 	rows, err := s.pool.Query(ctx,
 		`SELECT id, user_id, device_id, submitted_at, created_at
-		 FROM timesheets WHERE user_id = $1 ORDER BY submitted_at DESC`,
-		userID,
+		 FROM timesheets WHERE user_id = $1 ORDER BY submitted_at DESC LIMIT $2 OFFSET $3`,
+		userID, limit, offset,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("listing timesheets by user: %w", err)
@@ -183,6 +194,13 @@ func (s *Store) ListTimesheetsAll(ctx context.Context, filters TimesheetFilters)
 	}
 
 	query += " ORDER BY submitted_at DESC"
+
+	limit := filters.Limit
+	if limit <= 0 {
+		limit = 100
+	}
+	query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
+	args = append(args, limit, filters.Offset)
 
 	rows, err := s.pool.Query(ctx, query, args...)
 	if err != nil {

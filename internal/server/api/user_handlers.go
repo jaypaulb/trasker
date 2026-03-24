@@ -13,7 +13,8 @@ var validRoles = map[string]bool{"member": true, "manager": true, "admin": true}
 
 func userListHandler(deps *Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		users, err := deps.Store.ListUsers(r.Context())
+		limit, offset := parsePagination(r)
+		users, err := deps.Store.ListUsers(r.Context(), store.UserListFilters{Limit: limit, Offset: offset})
 		if err != nil {
 			deps.Logger.Error("failed to list users", "error", err)
 			respondError(w, http.StatusInternalServerError, "failed to list users")
