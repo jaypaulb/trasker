@@ -130,7 +130,10 @@ func (q *Queue) listDueSubmissions() ([]PendingSubmission, error) {
 			return nil, fmt.Errorf("queue: scan: %w", err)
 		}
 		if lastRetry.Valid {
-			t, _ := time.Parse(time.RFC3339, lastRetry.String)
+			t, parseErr := time.Parse(time.RFC3339, lastRetry.String)
+			if parseErr != nil {
+				return nil, fmt.Errorf("queue: parse last_retry %q: %w", lastRetry.String, parseErr)
+			}
 			sub.LastRetry = &t
 		}
 

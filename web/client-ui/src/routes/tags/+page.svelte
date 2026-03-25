@@ -1,22 +1,25 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
-  import type { Tag } from '$lib/types';
+  import type { Tag, TagRule } from '$lib/types';
 
   let tags: Tag[] = [];
+  let rules: TagRule[] = [];
   let loading = true;
   let newName = '';
   let newColor = '#3b82f6';
   let message = '';
 
-  // TODO: Wire tag_rules via additional API endpoints when tagger store API is added
-  // For now, this page manages tags only. Rule management will be added in a follow-up.
+  // New rule form
+  let ruleTagId: number | undefined;
+  let ruleAppPattern = '';
+  let ruleTitlePattern = '';
 
   onMount(async () => {
     try {
-      tags = await api.getTags();
+      [tags, rules] = await Promise.all([api.getTags(), api.getTagRules()]);
     } catch (e) {
-      console.error('Failed to load tags:', e);
+      console.error('Failed to load:', e);
     } finally {
       loading = false;
     }
@@ -29,6 +32,41 @@
       tags = await api.getTags();
       newName = '';
       message = 'Tag created';
+      setTimeout(() => message = '', 3000);
+    } catch (e) {
+      message = `Failed: ${e}`;
+    }
+  }
+
+  async function createRule() {
+    if (!ruleTagId || !ruleAppPattern.trim()) return;
+    try {
+      const titlePat = ruleTitlePattern.trim() || undefined;
+      await api.createTagRule(ruleTagId, ruleAppPattern.trim(), titlePat);
+      rules = await api.getTagRules();
+      ruleAppPattern = '';
+      ruleTitlePattern = '';
+      message = 'Rule created';
+      setTimeout(() => message = '', 3000);
+    } catch (e) {
+      message = `Failed: ${e}`;
+    }
+  }
+
+  async function deleteRule(id: number) {
+    try {
+      await api.deleteTagRule(id);
+      rules = await api.getTagRules();
+    } catch (e) {
+      message = `Failed: ${e}`;
+    }
+  }
+
+  async function acceptRule(id: number) {
+    try {
+      await api.acceptTagRule(id);
+      rules = await api.getTagRules();
+      message = 'Rule accepted';
       setTimeout(() => message = '', 3000);
     } catch (e) {
       message = `Failed: ${e}`;
@@ -79,8 +117,51 @@
       {/if}
     </div>
 
-    <!-- Auto-tag rules section (placeholder for tagger integration) -->
+    <!-- Auto-tag rules section -->
     <h2 class="text-lg font-semibold mt-8 mb-3">Auto-Tag Rules</h2>
-    <p class="text-gray-400 text-sm">Auto-tag rule management will be available in a future update. Rules are currently managed through the tagger engine.</p>
+
+    <!-- Create new rule -->
+    <div class="flex items-center gap-3 mb-4">
+      <select bind:value={ruleTagId} class="border rounded px-2 py-2 text-sm">
+        <option value={undefined}>Select tag...</option>
+        {#each tags as tag}
+          <option value={tag.id}>{tag.name}</option>
+        {/each}
+      </select>
+      <input type="text" bind:value={ruleAppPattern}
+             class="flex-1 border rounded px-3 py-2 text-sm"
+             placeholder="App pattern (e.g. firefox, code)" />
+      <input type="text" bind:value={ruleTitlePattern}
+             class="flex-1 border rounded px-3 py-2 text-sm"
+             placeholder="Title pattern (optional)" />
+      <button class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
+              onclick={createRule}
+              disabled={!ruleTagId || !ruleAppPattern.trim()}>
+        Add Rule
+      </button>
+    </div>
+
+    <!-- Rule list -->
+    <div class="space-y-2">
+      {#each rules as rule}
+        <div class="flex items-center gap-3 p-3 border rounded text-sm {rule.suggested ? 'border-yellow-300 bg-yellow-50' : ''}">
+          <span class="font-medium text-blue-600">{rule.tag_name}</span>
+          <span class="text-gray-600">app: <code class="bg-gray-100 px-1 rounded">{rule.app_pattern}</code></span>
+          {#if rule.title_pattern}
+            <span class="text-gray-600">title: <code class="bg-gray-100 px-1 rounded">{rule.title_pattern}</code></span>
+          {/if}
+          <span class="text-gray-400">hits: {rule.hit_count}</span>
+          {#if rule.suggested}
+            <span class="text-yellow-600 text-xs font-medium">SUGGESTED</span>
+            <button class="text-green-600 hover:text-green-800 text-xs" onclick={() => acceptRule(rule.id)}>Accept</button>
+          {/if}
+          <button class="ml-auto text-red-500 hover:text-red-700 text-xs" onclick={() => deleteRule(rule.id)}>Delete</button>
+        </div>
+      {/each}
+
+      {#if rules.length === 0}
+        <p class="text-gray-400 text-sm">No auto-tag rules yet. Rules will be suggested as you tag events, or you can create them manually above.</p>
+      {/if}
+    </div>
   {/if}
 </div>

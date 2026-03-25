@@ -85,7 +85,7 @@
 
 <div class="space-y-6">
   <div class="flex items-center justify-between">
-    <h1 class="text-2xl font-bold text-gray-900">Reports</h1>
+    <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Reports</h1>
     <button
       onclick={handleExportCsv}
       class="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
@@ -97,28 +97,28 @@
     </button>
   </div>
 
-  <div class="bg-white rounded-lg shadow-sm border p-4">
+  <div class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border dark:border-slate-700 p-4">
     <DateRangeFilter bind:from bind:to onchange={handleDateChange} />
   </div>
 
   {#if loading}
-    <div class="text-gray-500">Loading reports...</div>
+    <div class="text-gray-500 dark:text-gray-400">Loading reports...</div>
   {:else if error}
-    <div class="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4">{error}</div>
+    <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 rounded-lg p-4">{error}</div>
   {:else}
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      <div class="bg-white rounded-lg shadow-sm border p-5">
-        <h3 class="text-sm font-medium text-gray-500 mb-4">Time by Tag</h3>
+      <div class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border dark:border-slate-700 p-5">
+        <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-4">Time by Tag</h3>
         <TagChart data={tagData} />
       </div>
 
-      <div class="bg-white rounded-lg shadow-sm border p-5">
-        <h3 class="text-sm font-medium text-gray-500 mb-4">Time by Day</h3>
+      <div class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border dark:border-slate-700 p-5">
+        <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-4">Time by Day</h3>
         <BarChart labels={dayChartLabels} datasets={dayChartDatasets} />
       </div>
 
-      <div class="bg-white rounded-lg shadow-sm border p-5 lg:col-span-2">
-        <h3 class="text-sm font-medium text-gray-500 mb-4">Time by Person</h3>
+      <div class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border dark:border-slate-700 p-5 lg:col-span-2">
+        <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-4">Time by Person</h3>
         <BarChart labels={personChartLabels} datasets={personChartDatasets} />
       </div>
     </div>

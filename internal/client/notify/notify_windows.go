@@ -10,6 +10,11 @@ import (
 	"sync"
 )
 
+// New creates a platform-appropriate Notifier.
+func New() (Notifier, error) {
+	return NewWindowsNotifier()
+}
+
 // WindowsNotifier implements the Notifier interface for Windows using
 // PowerShell to invoke the Windows Toast notification API.
 //

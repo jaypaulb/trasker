@@ -151,6 +151,27 @@ func (s *Store) ListAllActiveAPIKeysWithRoles(ctx context.Context) ([]auth.APIKe
 	return keys, rows.Err()
 }
 
+// GetActiveAPIKeyByPrefix returns a single active (non-revoked, non-expired) API key
+// matching the given prefix, joined with the user's role. Used by API key middleware
+// to narrow bcrypt comparison to a single candidate.
+func (s *Store) GetActiveAPIKeyByPrefix(ctx context.Context, prefix string) (*auth.APIKeyRecord, error) {
+	var k auth.APIKeyRecord
+	err := s.pool.QueryRow(ctx,
+		`SELECT k.id, k.user_id, k.key_hash, u.role, k.expires_at, k.revoked
+		 FROM api_keys k
+		 JOIN users u ON k.user_id = u.id
+		 WHERE k.key_prefix = $1 AND k.revoked = false AND k.expires_at > now()`,
+		prefix,
+	).Scan(&k.ID, &k.UserID, &k.KeyHash, &k.Role, &k.ExpiresAt, &k.Revoked)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("getting api key by prefix: %w", err)
+	}
+	return &k, nil
+}
+
 // RevokeAPIKey marks an API key as revoked.
 func (s *Store) RevokeAPIKey(ctx context.Context, id uuid.UUID) error {
 	tag, err := s.pool.Exec(ctx,

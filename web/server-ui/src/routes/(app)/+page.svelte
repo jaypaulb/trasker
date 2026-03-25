@@ -29,12 +29,17 @@
   onMount(async () => {
     try {
       const range = getCurrentWeekRange();
-      const [ts, summary] = await Promise.all([
+      // Load timesheets first (all authenticated users can access)
+      // Reports may fail for non-manager users — handle gracefully
+      const [ts, summary] = await Promise.allSettled([
         api.timesheets.list(range),
         api.reports.summary({ ...range, group_by: 'tag' }),
       ]);
-      timesheets = ts;
-      tagSummary = summary;
+      timesheets = ts.status === 'fulfilled' ? ts.value : [];
+      tagSummary = summary.status === 'fulfilled' ? summary.value : [];
+      if (ts.status === 'rejected') {
+        error = ts.reason instanceof Error ? ts.reason.message : 'Failed to load timesheets.';
+      }
     } catch (e) {
       error = e instanceof Error ? e.message : 'Failed to load dashboard data.';
     } finally {
@@ -62,15 +67,15 @@
 </script>
 
 <div class="space-y-6">
-  <h1 class="text-2xl font-bold text-gray-900">Dashboard</h1>
+  <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
 
   {#if loading}
-    <div class="flex items-center gap-2 text-gray-500">
+    <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
       <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
       Loading...
     </div>
   {:else if error}
-    <div class="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4">{error}</div>
+    <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 rounded-lg p-4">{error}</div>
   {:else}
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
       <SummaryCard
@@ -94,26 +99,26 @@
 
     <TagChart data={tagSummary} />
 
-    <div class="bg-white rounded-lg shadow-sm border">
-      <div class="px-5 py-4 border-b">
-        <h3 class="text-sm font-medium text-gray-500">Recent Submissions</h3>
+    <div class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border dark:border-slate-700">
+      <div class="px-5 py-4 border-b dark:border-slate-700">
+        <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400">Recent Submissions</h3>
       </div>
-      <div class="divide-y">
+      <div class="divide-y dark:divide-slate-700">
         {#each timesheets.slice(0, 10) as ts}
           {#each ts.entries as entry}
             <div class="px-5 py-3 flex items-center justify-between">
               <div>
-                <span class="font-medium text-gray-900">{entry.tag}</span>
-                <span class="text-xs text-gray-400 ml-2">
+                <span class="font-medium text-gray-900 dark:text-white">{entry.tag}</span>
+                <span class="text-xs text-gray-400 dark:text-gray-500 ml-2">
                   {new Date(entry.started_at).toLocaleDateString()}
                 </span>
               </div>
-              <span class="text-sm text-gray-600">{formatDuration(entry.duration_s)}</span>
+              <span class="text-sm text-gray-600 dark:text-gray-300">{formatDuration(entry.duration_s)}</span>
             </div>
           {/each}
         {/each}
         {#if timesheets.length === 0}
-          <div class="px-5 py-8 text-center text-gray-400">
+          <div class="px-5 py-8 text-center text-gray-400 dark:text-gray-500">
             No submissions this week. Submit time from your Trasker client.
           </div>
         {/if}

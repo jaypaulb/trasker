@@ -3,7 +3,7 @@ package session
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -18,6 +18,7 @@ type Engine struct {
 	store    *store.Store
 	tracker  tracker.Tracker
 	presence presence.PresenceDetector
+	logger   *slog.Logger
 
 	currentEventID int64
 	paused         bool
@@ -26,11 +27,12 @@ type Engine struct {
 }
 
 // NewEngine creates a new session engine.
-func NewEngine(s *store.Store, t tracker.Tracker, p presence.PresenceDetector) *Engine {
+func NewEngine(s *store.Store, t tracker.Tracker, p presence.PresenceDetector, logger *slog.Logger) *Engine {
 	return &Engine{
 		store:    s,
 		tracker:  t,
 		presence: p,
+		logger:   logger,
 	}
 }
 
@@ -38,10 +40,10 @@ func NewEngine(s *store.Store, t tracker.Tracker, p presence.PresenceDetector) *
 // detector, then runs the main event loop in a goroutine.
 func (e *Engine) Start(ctx context.Context) {
 	if err := e.tracker.Start(ctx); err != nil {
-		log.Printf("tracker start error: %v", err)
+		e.logger.Error("tracker start error", "error", err)
 	}
 	if err := e.presence.Start(ctx); err != nil {
-		log.Printf("presence start error: %v", err)
+		e.logger.Error("presence start error", "error", err)
 	}
 
 	e.wg.Add(1)
@@ -91,14 +93,14 @@ func (e *Engine) handleFocusChange(fc tracker.FocusChange) {
 	// End the current event
 	if e.currentEventID > 0 {
 		if err := e.store.EndFocusEvent(e.currentEventID, fc.Timestamp); err != nil {
-			log.Printf("end focus event %d: %v", e.currentEventID, err)
+			e.logger.Error("end focus event failed", "event_id", e.currentEventID, "error", err)
 		}
 	}
 
 	// Insert the new event
 	id, err := e.store.InsertFocusEvent(fc.AppName, fc.WindowTitle, fc.Timestamp)
 	if err != nil {
-		log.Printf("insert focus event: %v", err)
+		e.logger.Error("insert focus event failed", "error", err)
 		return
 	}
 	e.currentEventID = id
@@ -143,7 +145,7 @@ func (e *Engine) endCurrentEventLocked() {
 	if e.currentEventID > 0 {
 		now := time.Now().UTC()
 		if err := e.store.EndFocusEvent(e.currentEventID, now); err != nil {
-			log.Printf("end focus event %d: %v", e.currentEventID, err)
+			e.logger.Error("end focus event failed", "event_id", e.currentEventID, "error", err)
 		}
 		e.currentEventID = 0
 	}

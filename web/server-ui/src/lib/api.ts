@@ -99,6 +99,18 @@ export const api = {
     login(code: string, redirect_uri: string): Promise<{ tokens: AuthTokens; user: User }> {
       return request('POST', '/auth/login', { code, redirect_uri }, { skipAuth: true });
     },
+    /** Local admin login with email + password */
+    localLogin(email: string, password: string): Promise<{ tokens: AuthTokens; user: User & { force_password_change?: boolean } }> {
+      return request('POST', '/auth/local-login', { email, password }, { skipAuth: true });
+    },
+    /** Get server auth configuration */
+    config(): Promise<{ oidc_enabled: boolean; local_enabled: boolean }> {
+      return request('GET', '/auth/config', undefined, { skipAuth: true });
+    },
+    /** Change password (requires auth) */
+    changePassword(current_password: string, new_password: string): Promise<{ status: string }> {
+      return request('POST', '/auth/change-password', { current_password, new_password });
+    },
     refresh(refresh_token: string): Promise<AuthTokens> {
       return refreshToken(refresh_token);
     },

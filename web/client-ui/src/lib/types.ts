@@ -45,6 +45,17 @@ export interface Config {
   pomodoro_defaults: string;
 }
 
+export interface TagRule {
+  id: number;
+  tag_id: number;
+  tag_name: string;
+  app_pattern: string;
+  title_pattern?: string;
+  priority: number;
+  suggested: boolean;
+  hit_count: number;
+}
+
 export interface TagSummary {
   tag: string;
   color: string;

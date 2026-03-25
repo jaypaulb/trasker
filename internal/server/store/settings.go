@@ -15,6 +15,7 @@ type OrgSettings struct {
 	OrgName       string
 	EntraTenant   string
 	EntraClient   string
+	EntraSecret   string
 	KeyExpiryDays int
 	UpdatedAt     time.Time
 }
@@ -23,9 +24,9 @@ type OrgSettings struct {
 func (s *Store) GetOrgSettings(ctx context.Context) (*OrgSettings, error) {
 	var o OrgSettings
 	err := s.pool.QueryRow(ctx,
-		`SELECT org_name, entra_tenant, entra_client, key_expiry_days, updated_at
+		`SELECT org_name, entra_tenant, entra_client, entra_secret, key_expiry_days, updated_at
 		 FROM org_settings WHERE id = 1`,
-	).Scan(&o.OrgName, &o.EntraTenant, &o.EntraClient, &o.KeyExpiryDays, &o.UpdatedAt)
+	).Scan(&o.OrgName, &o.EntraTenant, &o.EntraClient, &o.EntraSecret, &o.KeyExpiryDays, &o.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
@@ -40,6 +41,7 @@ type UpdateOrgSettingsParams struct {
 	OrgName       *string
 	EntraTenant   *string
 	EntraClient   *string
+	EntraSecret   *string
 	KeyExpiryDays *int
 }
 
@@ -56,12 +58,14 @@ func (s *Store) UpsertOrgSettings(ctx context.Context, p UpdateOrgSettingsParams
 	orgName := "My Organization"
 	entraTenant := ""
 	entraClient := ""
+	entraSecret := ""
 	keyExpiryDays := 60
 
 	if current != nil {
 		orgName = current.OrgName
 		entraTenant = current.EntraTenant
 		entraClient = current.EntraClient
+		entraSecret = current.EntraSecret
 		keyExpiryDays = current.KeyExpiryDays
 	}
 
@@ -74,22 +78,26 @@ func (s *Store) UpsertOrgSettings(ctx context.Context, p UpdateOrgSettingsParams
 	if p.EntraClient != nil {
 		entraClient = *p.EntraClient
 	}
+	if p.EntraSecret != nil {
+		entraSecret = *p.EntraSecret
+	}
 	if p.KeyExpiryDays != nil {
 		keyExpiryDays = *p.KeyExpiryDays
 	}
 
 	err = s.pool.QueryRow(ctx,
-		`INSERT INTO org_settings (id, org_name, entra_tenant, entra_client, key_expiry_days, updated_at)
-		 VALUES (1, $1, $2, $3, $4, now())
+		`INSERT INTO org_settings (id, org_name, entra_tenant, entra_client, entra_secret, key_expiry_days, updated_at)
+		 VALUES (1, $1, $2, $3, $4, $5, now())
 		 ON CONFLICT (id) DO UPDATE SET
 		   org_name = EXCLUDED.org_name,
 		   entra_tenant = EXCLUDED.entra_tenant,
 		   entra_client = EXCLUDED.entra_client,
+		   entra_secret = EXCLUDED.entra_secret,
 		   key_expiry_days = EXCLUDED.key_expiry_days,
 		   updated_at = now()
-		 RETURNING org_name, entra_tenant, entra_client, key_expiry_days, updated_at`,
-		orgName, entraTenant, entraClient, keyExpiryDays,
-	).Scan(&o.OrgName, &o.EntraTenant, &o.EntraClient, &o.KeyExpiryDays, &o.UpdatedAt)
+		 RETURNING org_name, entra_tenant, entra_client, entra_secret, key_expiry_days, updated_at`,
+		orgName, entraTenant, entraClient, entraSecret, keyExpiryDays,
+	).Scan(&o.OrgName, &o.EntraTenant, &o.EntraClient, &o.EntraSecret, &o.KeyExpiryDays, &o.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("upserting org settings: %w", err)
 	}

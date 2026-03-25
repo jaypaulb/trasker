@@ -4,6 +4,7 @@ package notify
 import (
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 	"time"
 )
 
@@ -37,11 +38,12 @@ func NewDispatcher(notifier Notifier, logger *slog.Logger) *Dispatcher {
 // Returns a channel that receives true if clicked, false if expired.
 func (d *Dispatcher) DeadmanCheck(timeout time.Duration) chan bool {
 	result := make(chan bool, 1)
-	clicked := false
+	var clicked atomic.Bool
 
 	onClick := func() {
-		clicked = true
-		result <- true
+		if clicked.CompareAndSwap(false, true) {
+			result <- true
+		}
 	}
 
 	err := d.notifier.Notify(
@@ -57,7 +59,7 @@ func (d *Dispatcher) DeadmanCheck(timeout time.Duration) chan bool {
 
 	go func() {
 		time.Sleep(timeout)
-		if !clicked {
+		if clicked.CompareAndSwap(false, true) {
 			result <- false
 		}
 	}()

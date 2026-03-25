@@ -9,16 +9,23 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/jaypaulb/trasker/internal/shared/models"
 )
 
-// DeviceRegistration is the payload for POST /api/v1/devices.
+// DeviceRegistration is the wire-format payload for POST /api/v1/devices.
+// This mirrors models.DeviceRegistrationRequest but lives here as the
+// sync package's own wire type to avoid coupling the HTTP layer to the
+// shared models package.
 type DeviceRegistration struct {
 	ClientDeviceID string `json:"client_device_id"`
 	OS             string `json:"os"`
 	Hostname       string `json:"hostname"`
 }
 
-// TimesheetEntry is a single entry in a timesheet submission.
+// TimesheetEntry is the wire-format representation of a single entry in a
+// timesheet submission. Timestamps are RFC 3339 strings for JSON serialization.
+// The corresponding domain type is models.TimesheetEntry which uses time.Time.
 type TimesheetEntry struct {
 	Tag        string `json:"tag"`
 	StartedAt  string `json:"started_at"`
@@ -26,6 +33,19 @@ type TimesheetEntry struct {
 	DurationS  int    `json:"duration_s"`
 	Notes      string `json:"notes,omitempty"`
 	AppSummary string `json:"app_summary,omitempty"`
+}
+
+// TimesheetEntryFromModel converts a domain models.TimesheetEntry to the
+// wire-format TimesheetEntry used for server communication.
+func TimesheetEntryFromModel(m models.TimesheetEntry) TimesheetEntry {
+	return TimesheetEntry{
+		Tag:        m.Tag,
+		StartedAt:  m.StartedAt.Format(time.RFC3339),
+		EndedAt:    m.EndedAt.Format(time.RFC3339),
+		DurationS:  m.DurationS,
+		Notes:      m.Notes,
+		AppSummary: m.AppSummary,
+	}
 }
 
 // TimesheetSubmission is the payload for POST /api/v1/timesheets.

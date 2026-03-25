@@ -13,3 +13,21 @@
 
 # Build output
 dist/
+build/
+
+# Go binaries (root only)
+/trasker-server
+/trasker-client
+/trasker-client.exe
+/systray_check
+
+# Node
+node_modules/
+
+# SPA build output (embedded at Docker build time, not committed)
+internal/client/webui/static/_app/
+internal/client/webui/static/index.html
+internal/client/webui/static/robots.txt
+
+# Server UI build output
+web/server-ui/build/

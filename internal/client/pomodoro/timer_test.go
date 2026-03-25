@@ -6,15 +6,25 @@ import (
 	"time"
 )
 
+// mustNewTimer creates a Timer with DefaultConfig, failing the test on error.
+func mustNewTimer(t *testing.T) *Timer {
+	t.Helper()
+	timer, err := NewTimer(DefaultConfig())
+	if err != nil {
+		t.Fatalf("NewTimer: %v", err)
+	}
+	return timer
+}
+
 func TestTimer_StartsInIdle(t *testing.T) {
-	timer := NewTimer(DefaultConfig())
+	timer := mustNewTimer(t)
 	if timer.State() != StateIdle {
 		t.Errorf("expected idle, got %s", timer.State())
 	}
 }
 
 func TestTimer_StartTransitionsToWork(t *testing.T) {
-	timer := NewTimer(DefaultConfig())
+	timer := mustNewTimer(t)
 	if err := timer.Start(nil); err != nil {
 		t.Fatalf("start: %v", err)
 	}
@@ -37,7 +47,7 @@ func TestTimer_StartTransitionsToWork(t *testing.T) {
 }
 
 func TestTimer_CannotStartWhenRunning(t *testing.T) {
-	timer := NewTimer(DefaultConfig())
+	timer := mustNewTimer(t)
 	timer.Start(nil)
 
 	err := timer.Start(nil)
@@ -49,7 +59,7 @@ func TestTimer_CannotStartWhenRunning(t *testing.T) {
 }
 
 func TestTimer_CancelReturnsToIdle(t *testing.T) {
-	timer := NewTimer(DefaultConfig())
+	timer := mustNewTimer(t)
 	timer.Start(nil)
 	timer.Cancel()
 
@@ -59,8 +69,9 @@ func TestTimer_CancelReturnsToIdle(t *testing.T) {
 }
 
 func TestTimer_ShortWorkTransitionsToBreak(t *testing.T) {
-	// Use 1-second work/break for fast test
-	config := Config{WorkMins: 0, BreakMins: 0}
+	// Use 1-second work/break for fast test — construct directly
+	// since NewTimer rejects WorkMins=0.
+	config := Config{WorkMins: 1, BreakMins: 0}
 	timer := &Timer{
 		state:   StateIdle,
 		config:  config,
@@ -91,7 +102,7 @@ func TestTimer_ShortWorkTransitionsToBreak(t *testing.T) {
 }
 
 func TestTimer_RemainingDecrements(t *testing.T) {
-	timer := NewTimer(DefaultConfig())
+	timer := mustNewTimer(t)
 	timer.Start(nil)
 
 	rem := timer.Remaining()
@@ -103,7 +114,7 @@ func TestTimer_RemainingDecrements(t *testing.T) {
 }
 
 func TestTimer_TagAssociation(t *testing.T) {
-	timer := NewTimer(DefaultConfig())
+	timer := mustNewTimer(t)
 	tagID := int64(42)
 	timer.Start(&tagID)
 
@@ -117,4 +128,27 @@ func TestTimer_TagAssociation(t *testing.T) {
 	}
 
 	timer.Cancel()
+}
+
+func TestNewTimer_RejectsInvalidConfig(t *testing.T) {
+	_, err := NewTimer(Config{WorkMins: 0, BreakMins: 5})
+	if err == nil {
+		t.Error("expected error for WorkMins=0")
+	}
+
+	_, err = NewTimer(Config{WorkMins: -1, BreakMins: 5})
+	if err == nil {
+		t.Error("expected error for WorkMins=-1")
+	}
+
+	_, err = NewTimer(Config{WorkMins: 25, BreakMins: -1})
+	if err == nil {
+		t.Error("expected error for BreakMins=-1")
+	}
+
+	// Valid config should work
+	_, err = NewTimer(Config{WorkMins: 25, BreakMins: 0})
+	if err != nil {
+		t.Errorf("unexpected error for valid config: %v", err)
+	}
 }

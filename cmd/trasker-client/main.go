@@ -9,20 +9,28 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
+	"time"
 
 	_ "modernc.org/sqlite"
 
 	"github.com/jaypaulb/trasker/internal/client/notify"
 	"github.com/jaypaulb/trasker/internal/client/pomodoro"
+	"github.com/jaypaulb/trasker/internal/client/presence"
 	"github.com/jaypaulb/trasker/internal/client/setup"
 	syncpkg "github.com/jaypaulb/trasker/internal/client/sync"
 	"github.com/jaypaulb/trasker/internal/client/tagger"
+	"github.com/jaypaulb/trasker/internal/client/tracker"
 	"github.com/jaypaulb/trasker/internal/client/tray"
 	"github.com/jaypaulb/trasker/internal/client/webui"
 )
 
-// Build-time values set via ldflags.
+// Build-time values stamped via ldflags.
+// In production, these contain fixed-size sentinel strings that are patched
+// (bytes.Replace) by the server at download time. The sentinels are 128 chars
+// each so the binary size is stable regardless of real value length.
+// For local dev, override with: go build -ldflags "-X main.serverURL=... -X main.apiKey=..."
 var (
 	serverURL = "http://localhost:8080"
 	apiKey    = "dev-key"
@@ -35,6 +43,11 @@ const (
 )
 
 func main() {
+	// Strip null-byte padding from binary-patched sentinel values.
+	serverURL = strings.TrimRight(serverURL, "\x00")
+	apiKey = strings.TrimRight(apiKey, "\x00")
+	version = strings.TrimRight(version, "\x00")
+
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}))
@@ -81,7 +94,11 @@ func main() {
 	}
 
 	// Pomodoro
-	pomodoroTimer := pomodoro.NewTimer(pomodoro.DefaultConfig())
+	pomodoroTimer, err := pomodoro.NewTimer(pomodoro.DefaultConfig())
+	if err != nil {
+		logger.Error("failed to init pomodoro timer", "error", err)
+		os.Exit(1)
+	}
 
 	// Sync client + queue
 	syncClient := syncpkg.NewClient(serverURL, apiKey)
@@ -113,6 +130,10 @@ func main() {
 	}
 	logger.Info("dashboard available at", "url", webServer.URL())
 
+	// Always open browser and send notification on startup.
+	// The system tray is a bonus if the desktop supports it.
+	go openDashboardAndNotify(webServer.URL(), logger)
+
 	// Tagger suggestion listener
 	go func() {
 		for suggestion := range tg.Suggestions() {
@@ -135,15 +156,106 @@ func main() {
 		}
 	}()
 
-	// TODO: Wire focus tracker and presence detector from Plan 03
-	// The session engine from Plan 03 would feed focus events to:
-	// - tg.ProcessFocusEvent(ctx, event)   for auto-tagging
-	// - notification dispatcher             for deadman/nag
-	// These are wired once Plan 03 components are available.
+	// --- Focus Tracker ---
+	// Tracks which window has focus and stores events in SQLite.
+	// On non-CGo builds (cross-compiled), X11 tracking is unavailable;
+	// only Wayland (gdbus-based) works. The client runs without tracking
+	// if the platform tracker can't be created.
+	var focusTracker tracker.Tracker
+	if trackingOn == 1 {
+		ft, err := tracker.NewPlatformTracker()
+		if err != nil {
+			logger.Warn("focus tracking unavailable", "error", err)
+		} else {
+			focusTracker = ft
+			if err := focusTracker.Start(ctx); err != nil {
+				logger.Warn("focus tracker failed to start", "error", err)
+				focusTracker = nil
+			} else {
+				logger.Info("focus tracker started")
+			}
+		}
+	} else {
+		logger.Info("tracking is disabled in config")
+	}
 
-	// --- System Tray ---
-	// Tray must run on the main goroutine (macOS requirement).
-	// All other work happens in goroutines above.
+	// --- Presence Detector ---
+	// Monitors screen lock (D-Bus) and deadman's switch to detect idle/away.
+	deadman := presence.DefaultDeadman()
+	deadman.Start(ctx)
+
+	var screenLock presence.ScreenLockMonitor
+	if sl, err := presence.NewScreenLockListener(); err != nil {
+		logger.Warn("screen lock detection unavailable", "error", err)
+	} else {
+		if err := sl.Start(ctx); err != nil {
+			logger.Warn("screen lock listener failed to start", "error", err)
+		} else {
+			screenLock = sl
+			logger.Info("screen lock listener started")
+		}
+	}
+
+	// Presence state listener — pauses/resumes tracking based on lock state
+	if screenLock != nil {
+		go func() {
+			for change := range screenLock.Events() {
+				logger.Info("screen lock state change", "state", change.State.String())
+				if change.State == presence.Away {
+					// Close current focus event when screen locks
+					closeCurrentFocusEvent(db, logger)
+				}
+			}
+		}()
+	}
+
+	// Deadman state listener
+	go func() {
+		for change := range deadman.States() {
+			logger.Info("presence state change", "state", change.State.String())
+			if change.State == presence.Paused {
+				closeCurrentFocusEvent(db, logger)
+			}
+		}
+	}()
+
+	// Focus event recorder — stores events in SQLite, feeds to tagger
+	if focusTracker != nil {
+		go func() {
+			for event := range focusTracker.Events() {
+				// Reset deadman timer on any focus change
+				deadman.Reset()
+
+				// Store focus event
+				now := event.Timestamp.Format(time.RFC3339)
+				// Close previous open event
+				closeCurrentFocusEvent(db, logger)
+
+				result, err := db.Exec(
+					`INSERT INTO focus_events (app_name, window_title, started_at, is_idle, created_at)
+					 VALUES (?, ?, ?, 0, ?)`,
+					event.AppName, event.WindowTitle, now, now,
+				)
+				if err != nil {
+					logger.Error("failed to store focus event", "error", err)
+					continue
+				}
+				eventID, _ := result.LastInsertId()
+
+				// Auto-tag via tagger engine
+				tg.ProcessFocusEvent(ctx, tagger.FocusEvent{
+					ID:          eventID,
+					AppName:     event.AppName,
+					WindowTitle: event.WindowTitle,
+				})
+			}
+		}()
+	}
+
+	// --- System Tray (best-effort) ---
+	// The tray is a bonus — the web dashboard is the primary UI.
+	// On environments without a system tray (headless, no D-Bus, Wayland-only),
+	// the app keeps running via web UI + sync.
 
 	trayActions := &clientTrayActions{
 		db:            db,
@@ -153,20 +265,35 @@ func main() {
 		logger:        logger,
 	}
 
-	// Run tray in a goroutine if needed, or on main thread
-	// On macOS this must be on the main thread. On Linux it can be a goroutine.
-	go func() {
-		<-sigCh
-		logger.Info("received shutdown signal")
-		cancel()
-		webServer.Stop(ctx)
-		syncQueue.Stop()
-		trayActions.tray.Quit()
-	}()
-
 	sysTray := tray.New(trayActions)
 	trayActions.tray = sysTray
-	sysTray.Run() // blocks until quit
+
+	// Run tray in a goroutine — it may block forever even if the icon never appears.
+	go sysTray.Run()
+
+	// Main goroutine blocks on shutdown signal or quit from web UI.
+	select {
+	case <-sigCh:
+		logger.Info("received shutdown signal")
+	case <-webServer.QuitCh():
+		logger.Info("quit requested from web UI")
+	}
+
+	cancel()
+
+	if focusTracker != nil {
+		focusTracker.Stop()
+	}
+	deadman.Stop()
+	if screenLock != nil {
+		screenLock.Stop()
+	}
+
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+	webServer.Stop(shutdownCtx)
+	syncQueue.Stop()
+	sysTray.Quit()
 
 	logger.Info("trasker client stopped")
 }
@@ -210,9 +337,6 @@ type clientTrayActions struct {
 	cancel        context.CancelFunc
 	logger        *slog.Logger
 	tray          *tray.Tray
-
-	// Notification integration placeholder
-	notifier notify.Notifier
 }
 
 func (a *clientTrayActions) OpenDashboard() {
@@ -273,4 +397,51 @@ func (a *clientTrayActions) SetAutostartOn(on bool) {
 func (a *clientTrayActions) Quit() {
 	a.logger.Info("quit requested from tray")
 	a.cancel()
+}
+
+// openDashboardAndNotify opens the browser to the web dashboard and sends a
+// desktop notification. Called on every startup — the browser is the primary UI.
+func openDashboardAndNotify(webURL string, logger *slog.Logger) {
+	// Open browser to dashboard
+	if err := setup.OpenBrowser(webURL); err != nil {
+		logger.Warn("failed to open browser", "error", err)
+	} else {
+		logger.Info("opened browser to dashboard", "url", webURL)
+	}
+
+	// Send desktop notification (best-effort — notification service may also be unavailable)
+	notifier, err := notify.New()
+	if err != nil {
+		logger.Warn("desktop notifications unavailable", "error", err)
+		return
+	}
+	err = notifier.Notify(
+		"Trasker is running",
+		fmt.Sprintf("Dashboard: %s — use Ctrl+C in terminal to stop", webURL),
+		func() { setup.OpenBrowser(webURL) },
+	)
+	if err != nil {
+		logger.Warn("failed to send notification", "error", err)
+	}
+	// Don't close notifier — keep it alive so click callbacks work.
+}
+
+// closeCurrentFocusEvent closes the most recent open focus event (one without an ended_at).
+// Called when focus changes, screen locks, or deadman fires.
+func closeCurrentFocusEvent(db *sql.DB, logger *slog.Logger) {
+	now := time.Now().UTC().Format(time.RFC3339)
+	result, err := db.Exec(
+		`UPDATE focus_events
+		 SET ended_at = ?, duration_s = CAST((julianday(?) - julianday(started_at)) * 86400 AS INTEGER)
+		 WHERE ended_at IS NULL
+		 ORDER BY id DESC LIMIT 1`,
+		now, now,
+	)
+	if err != nil {
+		logger.Warn("failed to close focus event", "error", err)
+		return
+	}
+	if n, _ := result.RowsAffected(); n > 0 {
+		logger.Debug("closed focus event")
+	}
 }

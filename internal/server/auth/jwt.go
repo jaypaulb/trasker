@@ -2,19 +2,21 @@ package auth
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/jaypaulb/trasker/internal/shared/models"
 )
 
 // JWTClaims holds the custom claims in a Trasker JWT.
 type JWTClaims struct {
-	UserID uuid.UUID `json:"uid"`
-	Email  string    `json:"email"`
-	Role   string    `json:"role"`
+	UserID uuid.UUID   `json:"uid"`
+	Email  string      `json:"email"`
+	Role   models.Role `json:"role"`
 	jwt.RegisteredClaims
 }
 
@@ -36,7 +38,7 @@ func NewJWTIssuer(secret string, duration time.Duration) (*JWTIssuer, error) {
 }
 
 // Issue creates a signed JWT for the given user.
-func (j *JWTIssuer) Issue(userID uuid.UUID, email, role string) (string, error) {
+func (j *JWTIssuer) Issue(userID uuid.UUID, email string, role models.Role) (string, error) {
 	now := time.Now()
 	claims := JWTClaims{
 		UserID: userID,
@@ -92,7 +94,8 @@ func JWTMiddleware(issuer *JWTIssuer) func(http.Handler) http.Handler {
 
 			claims, err := issuer.Validate(parts[1])
 			if err != nil {
-				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})
+				slog.Warn("JWT validation failed", "error", err)
+				writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid or expired token"})
 				return
 			}
 

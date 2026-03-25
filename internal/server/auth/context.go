@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jaypaulb/trasker/internal/shared/models"
 )
 
 type contextKey string
@@ -35,13 +36,13 @@ func UserIDFrom(ctx context.Context) (uuid.UUID, bool) {
 }
 
 // WithUserRole stores the user role in context.
-func WithUserRole(ctx context.Context, role string) context.Context {
+func WithUserRole(ctx context.Context, role models.Role) context.Context {
 	return context.WithValue(ctx, ctxKeyUserRole, role)
 }
 
 // UserRoleFrom retrieves the user role from context.
-func UserRoleFrom(ctx context.Context) (string, bool) {
-	role, ok := ctx.Value(ctxKeyUserRole).(string)
+func UserRoleFrom(ctx context.Context) (models.Role, bool) {
+	role, ok := ctx.Value(ctxKeyUserRole).(models.Role)
 	return role, ok
 }
 

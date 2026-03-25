@@ -1,18 +1,21 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jaypaulb/trasker/internal/server/store"
+	"github.com/jaypaulb/trasker/internal/shared/models"
 )
-
-var validRoles = map[string]bool{"member": true, "manager": true, "admin": true}
 
 func userListHandler(deps *Dependencies) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		users, err := deps.Store.ListUsers(r.Context())
+		limit, offset := parsePagination(r)
+		users, err := deps.Store.ListUsers(r.Context(), store.UserListFilters{Limit: limit, Offset: offset})
 		if err != nil {
+			deps.Logger.Error("failed to list users", "error", err)
 			respondError(w, http.StatusInternalServerError, "failed to list users")
 			return
 		}
@@ -47,14 +50,19 @@ func userUpdateRoleHandler(deps *Dependencies) http.HandlerFunc {
 			respondError(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
-		if !validRoles[req.Role] {
+		if !models.ValidRoles[models.Role(req.Role)] {
 			respondError(w, http.StatusBadRequest, "role must be one of: member, manager, admin")
 			return
 		}
 
 		user, err := deps.Store.UpdateUserRole(r.Context(), userID, req.Role)
 		if err != nil {
-			respondError(w, http.StatusNotFound, "user not found")
+			if errors.Is(err, store.ErrNotFound) {
+				respondError(w, http.StatusNotFound, "user not found")
+			} else {
+				deps.Logger.Error("failed to update user role", "error", err, "user_id", userID)
+				respondError(w, http.StatusInternalServerError, "failed to update user role")
+			}
 			return
 		}
 

@@ -52,10 +52,10 @@ func TestAdminHandler_DeleteEntry(t *testing.T) {
 	router, s, admin, token := setupAdminTestServer(t)
 
 	ctx := context.Background()
-	plainKey := "trsk_admindeletetest12345678901"
+	plainKey := "tsk_admindeletetest12345678901a"
 	hash, _ := bcrypt.GenerateFromPassword([]byte(plainKey), bcrypt.DefaultCost)
 	apiKey, err := s.CreateAPIKey(ctx, store.CreateAPIKeyParams{
-		UserID: admin.ID, KeyHash: string(hash), KeyPrefix: "trsk_adl", ExpiresAt: time.Now().Add(60 * 24 * time.Hour),
+		UserID: admin.ID, KeyHash: string(hash), KeyPrefix: plainKey[:8], ExpiresAt: time.Now().Add(60 * 24 * time.Hour),
 	})
 	require.NoError(t, err)
 	device, err := s.UpsertDevice(ctx, store.UpsertDeviceParams{

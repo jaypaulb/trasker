@@ -28,18 +28,20 @@ type UpsertDeviceParams struct {
 	APIKeyID       uuid.UUID
 	ClientDeviceID string
 	OS             string
+	Hostname       string // used as default device_name on first registration
 }
 
 // UpsertDevice inserts a device or updates last_seen_at on conflict.
 // Conflict key is (client_device_id, api_key_id).
 func (s *Store) UpsertDevice(ctx context.Context, p UpsertDeviceParams) (*Device, error) {
+	// Use hostname as default device_name on first insert (NULLIF avoids storing empty string).
 	var d Device
 	err := s.pool.QueryRow(ctx,
-		`INSERT INTO devices (user_id, api_key_id, client_device_id, os)
-		 VALUES ($1, $2, $3, $4)
+		`INSERT INTO devices (user_id, api_key_id, client_device_id, os, device_name)
+		 VALUES ($1, $2, $3, $4, NULLIF($5, ''))
 		 ON CONFLICT (client_device_id, api_key_id) DO UPDATE SET last_seen_at = now()
 		 RETURNING id, user_id, api_key_id, client_device_id, device_name, os, last_seen_at, created_at`,
-		p.UserID, p.APIKeyID, p.ClientDeviceID, p.OS,
+		p.UserID, p.APIKeyID, p.ClientDeviceID, p.OS, p.Hostname,
 	).Scan(&d.ID, &d.UserID, &d.APIKeyID, &d.ClientDeviceID, &d.DeviceName, &d.OS, &d.LastSeenAt, &d.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("upserting device: %w", err)

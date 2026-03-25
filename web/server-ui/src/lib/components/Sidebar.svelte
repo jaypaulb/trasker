@@ -26,7 +26,7 @@
   }
 </script>
 
-<aside class="w-64 bg-[var(--color-sidebar)] text-[var(--color-sidebar-text)] min-h-screen flex flex-col">
+<aside class="w-64 bg-slate-800 dark:bg-slate-900 text-slate-300 min-h-screen flex flex-col">
   <div class="p-6">
     <h1 class="text-xl font-bold text-white">Trasker</h1>
   </div>

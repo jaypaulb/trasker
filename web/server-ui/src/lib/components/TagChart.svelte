@@ -23,6 +23,9 @@
     if (chart) chart.destroy();
     if (!canvas || data.length === 0) return;
 
+    const isDark = document.documentElement.classList.contains('dark');
+    const legendColor = isDark ? '#94a3b8' : '#6b7280';
+
     chart = new Chart(canvas, {
       type: 'doughnut',
       data: {
@@ -39,7 +42,10 @@
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { position: 'right' },
+          legend: {
+            position: 'right',
+            labels: { color: legendColor },
+          },
           tooltip: {
             callbacks: {
               label: (ctx) => {
@@ -66,11 +72,11 @@
   onDestroy(() => chart?.destroy());
 </script>
 
-<div class="bg-white rounded-lg shadow-sm border p-5">
-  <h3 class="text-sm font-medium text-gray-500 mb-4">Time by Tag</h3>
+<div class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border dark:border-slate-700 p-5">
+  <h3 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-4">Time by Tag</h3>
   <div class="h-64">
     {#if data.length === 0}
-      <div class="flex items-center justify-center h-full text-gray-400">
+      <div class="flex items-center justify-center h-full text-gray-400 dark:text-gray-500">
         No submitted time data yet.
       </div>
     {:else}

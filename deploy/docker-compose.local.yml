@@ -1,0 +1,52 @@
+# Trasker — Local development compose
+# Usage: cd deploy && docker compose -f docker-compose.local.yml up --build
+#
+# Starts postgres + API server (with Go toolchain for client builds).
+# SPA: use `npm run dev` on the host (Vite proxies /api → localhost:8080).
+#   Or open http://localhost:8080/api/v1/health to verify the API directly.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: trasker
+      POSTGRES_USER: trasker
+      POSTGRES_PASSWORD: localdev
+    volumes:
+      - pgdata_local:/var/lib/postgresql/data
+      # Auto-run migrations on first start (postgres runs *.sql in /docker-entrypoint-initdb.d/)
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5434:5432"   # avoid clashing with host postgres (5432) and other containers (5433)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trasker"]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.server-local
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      TRASKER_DB_HOST: postgres
+      TRASKER_DB_PORT: 5432
+      TRASKER_DB_NAME: trasker
+      TRASKER_DB_USER: trasker
+      TRASKER_DB_PASSWORD: localdev
+      TRASKER_JWT_SECRET: local-dev-secret-that-is-at-least-32-bytes-long!
+      # TRASKER_ENTRA_TENANT: <your-tenant-id>
+      # TRASKER_ENTRA_CLIENT: <your-client-id>
+      # TRASKER_ENTRA_SECRET: <your-client-secret>
+      ENTRA_REDIRECT_URL: http://localhost:5174/auth/callback
+      LISTEN_ADDR: ":8080"
+    ports:
+      - "8080:8080"
+
+volumes:
+  pgdata_local:

@@ -1,6 +1,7 @@
 <script lang="ts">
   import '../app.css';
   import { page } from '$app/stores';
+  import { api } from '$lib/api';
 
   let { children } = $props();
 
@@ -12,6 +13,18 @@
     { href: '/tags', label: 'Tags' },
     { href: '/settings', label: 'Settings' },
   ];
+
+  let quitting = $state(false);
+
+  async function quit() {
+    if (!confirm('Shut down Trasker client? You will need to restart it manually.')) return;
+    quitting = true;
+    try {
+      await api.quit();
+    } catch {
+      // Connection will drop as the server shuts down — expected
+    }
+  }
 </script>
 
 <div class="min-h-screen bg-white">
@@ -24,6 +37,13 @@
           {item.label}
         </a>
       {/each}
+      <div class="ml-auto">
+        <button class="text-sm text-red-500 hover:text-red-700"
+                onclick={quit}
+                disabled={quitting}>
+          {quitting ? 'Shutting down...' : 'Quit'}
+        </button>
+      </div>
     </div>
   </nav>
 

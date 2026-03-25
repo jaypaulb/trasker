@@ -19,6 +19,10 @@
     if (chart) chart.destroy();
     if (!canvas) return;
 
+    const isDark = document.documentElement.classList.contains('dark');
+    const textColor = isDark ? '#94a3b8' : '#6b7280';
+    const gridColor = isDark ? '#334155' : '#e5e7eb';
+
     chart = new Chart(canvas, {
       type: 'bar',
       data: {
@@ -36,10 +40,17 @@
         scales: {
           y: {
             beginAtZero: true,
-            title: { display: true, text: yLabel },
+            title: { display: true, text: yLabel, color: textColor },
+            ticks: { color: textColor },
+            grid: { color: gridColor },
+          },
+          x: {
+            ticks: { color: textColor },
+            grid: { color: gridColor },
           },
         },
         plugins: {
+          legend: { labels: { color: textColor } },
           tooltip: {
             callbacks: {
               label: (ctx) => {

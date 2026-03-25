@@ -84,6 +84,11 @@ import (
 	"unsafe"
 )
 
+// New creates a platform-appropriate Notifier.
+func New() (Notifier, error) {
+	return NewDarwinNotifier()
+}
+
 // clickCallbackMu guards the global click callback map.
 var clickCallbackMu sync.Mutex
 var clickCallbackMap = make(map[string]ClickAction)

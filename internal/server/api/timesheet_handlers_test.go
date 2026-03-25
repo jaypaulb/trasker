@@ -30,10 +30,10 @@ func TestTimesheetHandler_Submit(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	plainKey := "trsk_timesheethandlertest123456789"
+	plainKey := "tsk_submithandlertest123456789ab"
 	hash, _ := bcrypt.GenerateFromPassword([]byte(plainKey), bcrypt.DefaultCost)
 	apiKey, err := s.CreateAPIKey(context.Background(), store.CreateAPIKeyParams{
-		UserID: user.ID, KeyHash: string(hash), KeyPrefix: "trsk_tsh", ExpiresAt: time.Now().Add(60 * 24 * time.Hour),
+		UserID: user.ID, KeyHash: string(hash), KeyPrefix: plainKey[:8], ExpiresAt: time.Now().Add(60 * 24 * time.Hour),
 	})
 	require.NoError(t, err)
 
@@ -89,10 +89,10 @@ func TestTimesheetHandler_ListOwn(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	plainKey := "trsk_timesheetlisttest1234567890"
+	plainKey := "tsk_listtesthandler1234567890ab"
 	hash, _ := bcrypt.GenerateFromPassword([]byte(plainKey), bcrypt.DefaultCost)
 	apiKey, err := s.CreateAPIKey(context.Background(), store.CreateAPIKeyParams{
-		UserID: user.ID, KeyHash: string(hash), KeyPrefix: "trsk_tsl", ExpiresAt: time.Now().Add(60 * 24 * time.Hour),
+		UserID: user.ID, KeyHash: string(hash), KeyPrefix: plainKey[:8], ExpiresAt: time.Now().Add(60 * 24 * time.Hour),
 	})
 	require.NoError(t, err)
 

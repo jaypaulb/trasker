@@ -5,7 +5,7 @@
   let { children } = $props();
 </script>
 
-<div class="flex min-h-screen">
+<div class="flex min-h-screen bg-slate-50 dark:bg-slate-950">
   <Sidebar />
   <div class="flex-1 flex flex-col">
     <Header />

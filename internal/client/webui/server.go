@@ -20,6 +20,7 @@ type Server struct {
 	srv      *http.Server
 	port     int
 	listener net.Listener
+	quitCh   chan struct{} // closed when quit is requested via API
 }
 
 // NewServer creates a new webui server.
@@ -29,6 +30,7 @@ func NewServer(db *sql.DB, port int, logger *slog.Logger) *Server {
 		logger: logger,
 		mux:    http.NewServeMux(),
 		port:   port,
+		quitCh: make(chan struct{}),
 	}
 	s.registerRoutes()
 	return s
@@ -81,6 +83,21 @@ func (s *Server) URL() string {
 	return fmt.Sprintf("http://127.0.0.1:%d", s.Port())
 }
 
+// QuitCh returns a channel that is closed when quit is requested via the API.
+func (s *Server) QuitCh() <-chan struct{} {
+	return s.quitCh
+}
+
+// RequestQuit signals that the client should shut down (called by the quit API endpoint).
+func (s *Server) RequestQuit() {
+	select {
+	case <-s.quitCh:
+		// Already closed
+	default:
+		close(s.quitCh)
+	}
+}
+
 func (s *Server) registerRoutes() {
 	// Serve SPA static files
 	staticFS, err := fs.Sub(Assets, "static")
@@ -91,6 +108,6 @@ func (s *Server) registerRoutes() {
 	}
 
 	// API routes registered in api.go
-	api := NewAPI(s.db, s.logger)
+	api := NewAPI(s.db, s.logger, s)
 	api.RegisterRoutes(s.mux)
 }

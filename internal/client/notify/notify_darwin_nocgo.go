@@ -12,6 +12,11 @@ import (
 	"os/exec"
 )
 
+// New creates a platform-appropriate Notifier.
+func New() (Notifier, error) {
+	return NewDarwinNotifier()
+}
+
 // DarwinNotifier is the non-CGo fallback for macOS notifications.
 // Uses osascript to display notifications.
 type DarwinNotifier struct{}

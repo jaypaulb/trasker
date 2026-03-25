@@ -3,6 +3,7 @@ package session_test
 
 import (
 	"context"
+	"log/slog"
 	"path/filepath"
 	"testing"
 	"time"
@@ -77,7 +78,7 @@ func newTestEngine(t *testing.T) (*session.Engine, *mockTracker, *mockPresence, 
 	mt := newMockTracker()
 	mp := newMockPresence()
 
-	eng := session.NewEngine(s, mt, mp)
+	eng := session.NewEngine(s, mt, mp, slog.Default())
 	return eng, mt, mp, s
 }
 

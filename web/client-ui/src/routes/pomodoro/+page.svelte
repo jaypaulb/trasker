@@ -42,6 +42,21 @@
     }
   }
 
+  async function stopPomodoro() {
+    try {
+      await api.stopPomodoro();
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+      }
+      sessions = await api.getPomodoro();
+      activePomo = null;
+      timerDisplay = '00:00';
+    } catch (e) {
+      console.error('Failed to stop:', e);
+    }
+  }
+
   function startTimerDisplay() {
     if (timerInterval) clearInterval(timerInterval);
     timerInterval = setInterval(updateTimer, 1000);
@@ -102,7 +117,14 @@
     </div>
 
     <!-- Controls -->
-    {#if !activePomo}
+    {#if activePomo}
+      <div class="flex justify-center mb-8">
+        <button class="px-6 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 font-medium"
+                onclick={stopPomodoro}>
+          Stop
+        </button>
+      </div>
+    {:else}
       <div class="flex items-center gap-4 justify-center mb-8">
         <label class="text-sm">
           Work: <input type="number" bind:value={workMins} min="1" max="90"

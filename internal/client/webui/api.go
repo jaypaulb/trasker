@@ -16,11 +16,12 @@ import (
 type API struct {
 	db     *sql.DB
 	logger *slog.Logger
+	server *Server
 }
 
 // NewAPI creates a new API handler set.
-func NewAPI(db *sql.DB, logger *slog.Logger) *API {
-	return &API{db: db, logger: logger}
+func NewAPI(db *sql.DB, logger *slog.Logger, server *Server) *API {
+	return &API{db: db, logger: logger, server: server}
 }
 
 // RegisterRoutes adds all API routes to the given mux.
@@ -34,8 +35,14 @@ func (a *API) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/submit", a.handleSubmit)
 	mux.HandleFunc("GET /api/pomodoro", a.handleGetPomodoro)
 	mux.HandleFunc("POST /api/pomodoro/start", a.handleStartPomodoro)
+	mux.HandleFunc("POST /api/pomodoro/stop", a.handleStopPomodoro)
 	mux.HandleFunc("GET /api/config", a.handleGetConfig)
 	mux.HandleFunc("PATCH /api/config", a.handleUpdateConfig)
+	mux.HandleFunc("POST /api/quit", a.handleQuit)
+	mux.HandleFunc("GET /api/tag-rules", a.handleGetTagRules)
+	mux.HandleFunc("POST /api/tag-rules", a.handleCreateTagRule)
+	mux.HandleFunc("DELETE /api/tag-rules/{id}", a.handleDeleteTagRule)
+	mux.HandleFunc("POST /api/tag-rules/{id}/accept", a.handleAcceptTagRule)
 }
 
 // --- Events ---
@@ -168,7 +175,11 @@ func (a *API) handleCreateTag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, _ := result.LastInsertId()
+	id, err := result.LastInsertId()
+	if err != nil {
+		a.jsonError(w, http.StatusInternalServerError, "failed to get tag id: "+err.Error())
+		return
+	}
 	a.jsonOK(w, map[string]any{"id": id, "name": req.Name, "color": req.Color})
 }
 
@@ -230,7 +241,11 @@ func (a *API) handleAddNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, _ := result.LastInsertId()
+	id, err := result.LastInsertId()
+	if err != nil {
+		a.jsonError(w, http.StatusInternalServerError, "failed to get note id: "+err.Error())
+		return
+	}
 	a.jsonOK(w, map[string]any{"id": id})
 }
 
@@ -302,7 +317,11 @@ func (a *API) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		a.jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	subID, _ := result.LastInsertId()
+	subID, err := result.LastInsertId()
+	if err != nil {
+		a.jsonError(w, http.StatusInternalServerError, "failed to get submission id: "+err.Error())
+		return
+	}
 
 	for _, eid := range req.EventIDs {
 		if _, err := tx.Exec(`INSERT INTO submission_events (submission_id, event_id) VALUES (?, ?)`,
@@ -396,8 +415,154 @@ func (a *API) handleStartPomodoro(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, _ := result.LastInsertId()
+	id, err := result.LastInsertId()
+	if err != nil {
+		a.jsonError(w, http.StatusInternalServerError, "failed to get pomodoro id: "+err.Error())
+		return
+	}
 	a.jsonOK(w, map[string]any{"id": id, "status": "work"})
+}
+
+func (a *API) handleStopPomodoro(w http.ResponseWriter, r *http.Request) {
+	now := time.Now().UTC().Format(time.RFC3339)
+	result, err := a.db.Exec(
+		`UPDATE pomodoro_sessions SET status = 'cancelled', ended_at = ?
+		 WHERE status IN ('work', 'break')`, now,
+	)
+	if err != nil {
+		a.jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		a.jsonError(w, http.StatusNotFound, "no active pomodoro session")
+		return
+	}
+	a.jsonOK(w, map[string]string{"status": "cancelled"})
+}
+
+// --- Quit ---
+
+func (a *API) handleQuit(w http.ResponseWriter, r *http.Request) {
+	a.jsonOK(w, map[string]string{"status": "shutting_down"})
+	// Signal shutdown after response is sent
+	go a.server.RequestQuit()
+}
+
+// --- Tag Rules ---
+
+func (a *API) handleGetTagRules(w http.ResponseWriter, r *http.Request) {
+	rows, err := a.db.Query(
+		`SELECT r.id, r.tag_id, t.name, r.app_pattern, r.title_pattern,
+		        r.priority, r.suggested, r.hit_count
+		 FROM tag_rules r
+		 JOIN tags t ON t.id = r.tag_id
+		 ORDER BY r.suggested ASC, r.priority DESC`)
+	if err != nil {
+		a.jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer rows.Close()
+
+	type RuleResponse struct {
+		ID           int64   `json:"id"`
+		TagID        int64   `json:"tag_id"`
+		TagName      string  `json:"tag_name"`
+		AppPattern   string  `json:"app_pattern"`
+		TitlePattern *string `json:"title_pattern,omitempty"`
+		Priority     int     `json:"priority"`
+		Suggested    bool    `json:"suggested"`
+		HitCount     int     `json:"hit_count"`
+	}
+
+	var rules []RuleResponse
+	for rows.Next() {
+		var rule RuleResponse
+		var titlePattern sql.NullString
+		var suggested int
+		if err := rows.Scan(&rule.ID, &rule.TagID, &rule.TagName, &rule.AppPattern,
+			&titlePattern, &rule.Priority, &suggested, &rule.HitCount); err != nil {
+			a.jsonError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if titlePattern.Valid {
+			rule.TitlePattern = &titlePattern.String
+		}
+		rule.Suggested = suggested == 1
+		rules = append(rules, rule)
+	}
+	if rules == nil {
+		rules = []RuleResponse{}
+	}
+	a.jsonOK(w, rules)
+}
+
+func (a *API) handleCreateTagRule(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		TagID        int64   `json:"tag_id"`
+		AppPattern   string  `json:"app_pattern"`
+		TitlePattern *string `json:"title_pattern,omitempty"`
+		Priority     int     `json:"priority"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		a.jsonError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if req.TagID == 0 || req.AppPattern == "" {
+		a.jsonError(w, http.StatusBadRequest, "tag_id and app_pattern are required")
+		return
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	result, err := a.db.Exec(
+		`INSERT INTO tag_rules (tag_id, app_pattern, title_pattern, priority, suggested, hit_count, created_at)
+		 VALUES (?, ?, ?, ?, 0, 0, ?)`,
+		req.TagID, req.AppPattern, req.TitlePattern, req.Priority, now,
+	)
+	if err != nil {
+		a.jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	id, _ := result.LastInsertId()
+	a.jsonOK(w, map[string]any{"id": id, "status": "created"})
+}
+
+func (a *API) handleDeleteTagRule(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		a.jsonError(w, http.StatusBadRequest, "invalid rule id")
+		return
+	}
+	result, err := a.db.Exec(`DELETE FROM tag_rules WHERE id = ?`, id)
+	if err != nil {
+		a.jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		a.jsonError(w, http.StatusNotFound, "rule not found")
+		return
+	}
+	a.jsonOK(w, map[string]string{"status": "deleted"})
+}
+
+func (a *API) handleAcceptTagRule(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		a.jsonError(w, http.StatusBadRequest, "invalid rule id")
+		return
+	}
+	result, err := a.db.Exec(`UPDATE tag_rules SET suggested = 0 WHERE id = ? AND suggested = 1`, id)
+	if err != nil {
+		a.jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		a.jsonError(w, http.StatusNotFound, "rule not found or not suggested")
+		return
+	}
+	a.jsonOK(w, map[string]string{"status": "accepted"})
 }
 
 // --- Config ---

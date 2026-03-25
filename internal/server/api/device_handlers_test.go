@@ -33,12 +33,12 @@ func setupDeviceTestServer(t *testing.T) (*api.Dependencies, http.Handler, *stor
 	})
 	require.NoError(t, err)
 
-	plainKey := "trsk_devicehandlertest1234567890"
+	plainKey := "tsk_devicehandlertest1234567890"
 	hash, _ := bcrypt.GenerateFromPassword([]byte(plainKey), bcrypt.DefaultCost)
 	apiKey, err := s.CreateAPIKey(context.Background(), store.CreateAPIKeyParams{
 		UserID:    user.ID,
 		KeyHash:   string(hash),
-		KeyPrefix: "trsk_dev",
+		KeyPrefix: plainKey[:8],
 		ExpiresAt: time.Now().Add(60 * 24 * time.Hour),
 	})
 	require.NoError(t, err)

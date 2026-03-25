@@ -57,27 +57,27 @@
   }
 
   const roleBadgeClasses: Record<string, string> = {
-    admin: 'bg-red-50 text-red-700',
-    manager: 'bg-amber-50 text-amber-700',
-    member: 'bg-gray-100 text-gray-700',
+    admin: 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    manager: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+    member: 'bg-gray-100 text-gray-700 dark:bg-slate-700 dark:text-gray-300',
   };
 </script>
 
 <div class="space-y-6">
-  <h1 class="text-2xl font-bold text-gray-900">User Management</h1>
+  <h1 class="text-2xl font-bold text-gray-900 dark:text-white">User Management</h1>
 
   {#if actionError}
-    <div class="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-sm">{actionError}</div>
+    <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 rounded-lg p-3 text-sm">{actionError}</div>
   {/if}
 
   {#if loading}
-    <div class="text-gray-500">Loading users...</div>
+    <div class="text-gray-500 dark:text-gray-400">Loading users...</div>
   {:else if error}
-    <div class="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4">{error}</div>
+    <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 rounded-lg p-4">{error}</div>
   {:else}
-    <div class="bg-white rounded-lg shadow-sm border overflow-x-auto">
+    <div class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border dark:border-slate-700 overflow-x-auto">
       <table class="w-full text-sm">
-        <thead class="bg-gray-50 text-left text-gray-500">
+        <thead class="bg-gray-50 dark:bg-slate-700/50 text-left text-gray-500 dark:text-gray-400">
           <tr>
             <th class="px-5 py-3 font-medium">Name</th>
             <th class="px-5 py-3 font-medium">Email</th>
@@ -86,27 +86,27 @@
             <th class="px-5 py-3 font-medium">Actions</th>
           </tr>
         </thead>
-        <tbody class="divide-y">
+        <tbody class="divide-y dark:divide-slate-700">
           {#each users as user}
             <tr>
-              <td class="px-5 py-3 text-gray-900 font-medium">{user.display_name}</td>
-              <td class="px-5 py-3 text-gray-600">{user.email}</td>
+              <td class="px-5 py-3 text-gray-900 dark:text-white font-medium">{user.display_name}</td>
+              <td class="px-5 py-3 text-gray-600 dark:text-gray-300">{user.email}</td>
               <td class="px-5 py-3">
                 <select
                   value={user.role}
                   onchange={(e) => changeRole(user.id, (e.target as HTMLSelectElement).value)}
-                  class="text-xs px-2 py-1 rounded border {roleBadgeClasses[user.role] ?? ''}"
+                  class="text-xs px-2 py-1 rounded border dark:border-slate-600 {roleBadgeClasses[user.role] ?? ''}"
                 >
                   <option value="member">Member</option>
                   <option value="manager">Manager</option>
                   <option value="admin">Admin</option>
                 </select>
               </td>
-              <td class="px-5 py-3 text-gray-600">{formatDate(user.created_at)}</td>
+              <td class="px-5 py-3 text-gray-600 dark:text-gray-300">{formatDate(user.created_at)}</td>
               <td class="px-5 py-3">
                 <button
                   onclick={() => loadKeys(user.id)}
-                  class="text-blue-600 hover:text-blue-800 text-xs"
+                  class="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 text-xs"
                 >
                   View API Keys
                 </button>
@@ -115,25 +115,25 @@
 
             <!-- Expandable API Keys row -->
             {#if apiKeys.has(user.id)}
-              <tr class="bg-gray-50">
+              <tr class="bg-gray-50 dark:bg-slate-700/30">
                 <td colspan="5" class="px-5 py-3">
-                  <div class="text-xs text-gray-500 mb-2">API Keys for {user.display_name}:</div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400 mb-2">API Keys for {user.display_name}:</div>
                   {#if (apiKeys.get(user.id) ?? []).length === 0}
-                    <span class="text-xs text-gray-400">No API keys.</span>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">No API keys.</span>
                   {:else}
                     <div class="space-y-1">
                       {#each apiKeys.get(user.id) ?? [] as key}
                         <div class="flex items-center gap-3 text-xs">
-                          <span class="font-mono text-gray-500">{key.key_prefix}...</span>
-                          <span class={key.revoked ? 'text-red-500' : 'text-green-600'}>
+                          <span class="font-mono text-gray-500 dark:text-gray-400">{key.key_prefix}...</span>
+                          <span class={key.revoked ? 'text-red-500 dark:text-red-400' : 'text-green-600 dark:text-green-400'}>
                             {key.revoked ? 'Revoked' : 'Active'}
                           </span>
-                          <span class="text-gray-400">Last used: {formatDate(key.last_used_at)}</span>
-                          <span class="text-gray-400">Expires: {formatDate(key.expires_at)}</span>
+                          <span class="text-gray-400 dark:text-gray-500">Last used: {formatDate(key.last_used_at)}</span>
+                          <span class="text-gray-400 dark:text-gray-500">Expires: {formatDate(key.expires_at)}</span>
                           {#if !key.revoked}
                             <button
                               onclick={() => revokeKey(key.id, user.id)}
-                              class="text-red-600 hover:text-red-800"
+                              class="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300"
                             >
                               Revoke
                             </button>

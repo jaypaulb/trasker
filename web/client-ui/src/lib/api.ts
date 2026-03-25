@@ -57,8 +57,33 @@ export const api = {
       tag_id: tagId,
     }),
 
+  stopPomodoro: () =>
+    post<{ status: string }>('/api/pomodoro/stop', {}),
+
   getConfig: () => get<Config>('/api/config'),
 
   updateConfig: (updates: Partial<Config>) =>
     patch<{ status: string }>('/api/config', updates),
+
+  quit: () =>
+    post<{ status: string }>('/api/quit', {}),
+
+  getTagRules: () => get<TagRule[]>('/api/tag-rules'),
+
+  createTagRule: (tagId: number, appPattern: string, titlePattern?: string, priority?: number) =>
+    post<{ id: number; status: string }>('/api/tag-rules', {
+      tag_id: tagId,
+      app_pattern: appPattern,
+      title_pattern: titlePattern,
+      priority: priority ?? 0,
+    }),
+
+  deleteTagRule: (id: number) =>
+    fetch(`/api/tag-rules/${id}`, { method: 'DELETE' }).then(res => {
+      if (!res.ok) throw new Error(`DELETE /api/tag-rules/${id}: ${res.status}`);
+      return res.json();
+    }) as Promise<{ status: string }>,
+
+  acceptTagRule: (id: number) =>
+    post<{ status: string }>(`/api/tag-rules/${id}/accept`, {}),
 };

@@ -42,6 +42,14 @@ type StateChange struct {
 	Timestamp time.Time
 }
 
+// ScreenLockMonitor monitors screen lock/unlock events.
+// Platform-specific implementations (Linux gdbus, macOS, Windows) all satisfy this.
+type ScreenLockMonitor interface {
+	Start(ctx context.Context) error
+	Stop()
+	Events() <-chan StateChange
+}
+
 // PresenceDetector monitors user presence through screen lock and deadman's switch.
 //
 // State machine:

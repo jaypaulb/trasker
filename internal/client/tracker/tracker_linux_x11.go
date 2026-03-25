@@ -1,4 +1,4 @@
-//go:build linux
+//go:build linux && cgo
 
 // internal/client/tracker/tracker_linux_x11.go
 package tracker

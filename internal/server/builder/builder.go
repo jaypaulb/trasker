@@ -1,13 +1,46 @@
 package builder
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sync"
 )
+
+// Sentinel strings compiled into the generic client binary via -ldflags -X.
+// At download time, the server does a bytes.Replace to swap these for real values.
+// Each sentinel is exactly 128 bytes so the binary size never changes.
+const (
+	SentinelLen = 128
+
+	// Prefix + padding to 128 chars. The prefix is unique enough to never appear naturally.
+	SentinelServerURL = "TRASKER_SENTINEL_SERVER_URL_____" +
+		"________________________________________________" +
+		"________________________________________________"
+	SentinelAPIKey = "TRASKER_SENTINEL_API_KEY________" +
+		"________________________________________________" +
+		"________________________________________________"
+	SentinelVersion = "TRASKER_SENTINEL_VERSION________" +
+		"________________________________________________" +
+		"________________________________________________"
+)
+
+func init() {
+	// Compile-time safety: ensure sentinels are exactly SentinelLen bytes.
+	if len(SentinelServerURL) != SentinelLen {
+		panic(fmt.Sprintf("SentinelServerURL is %d bytes, expected %d", len(SentinelServerURL), SentinelLen))
+	}
+	if len(SentinelAPIKey) != SentinelLen {
+		panic(fmt.Sprintf("SentinelAPIKey is %d bytes, expected %d", len(SentinelAPIKey), SentinelLen))
+	}
+	if len(SentinelVersion) != SentinelLen {
+		panic(fmt.Sprintf("SentinelVersion is %d bytes, expected %d", len(SentinelVersion), SentinelLen))
+	}
+}
 
 // Target represents a cross-compilation target.
 type Target struct {
@@ -48,13 +81,163 @@ func ValidateTarget(os, arch string) (Target, error) {
 	return Target{}, fmt.Errorf("unsupported target: %s/%s", os, arch)
 }
 
-// BuildRequest contains all information needed to build a client binary.
+// PatchRequest contains the values to patch into a cached binary.
+type PatchRequest struct {
+	Target    Target
+	APIKey    string
+	ServerURL string
+	Version   string
+}
+
+// Builder cross-compiles client binaries and caches them for fast patching.
+type Builder struct {
+	SourceDir string // Go module root (where go.mod lives)
+	ClientPkg string // e.g. "./cmd/trasker-client"
+
+	mu    sync.RWMutex
+	cache map[string][]byte // target string → generic binary bytes
+}
+
+// NewBuilder creates a Builder.
+func NewBuilder(sourceDir, clientPkg string) *Builder {
+	return &Builder{
+		SourceDir: sourceDir,
+		ClientPkg: clientPkg,
+		cache:     make(map[string][]byte),
+	}
+}
+
+// PreBuild compiles all supported targets with sentinel values and caches
+// the resulting binaries in memory. Call this once at server startup (in a
+// background goroutine — it takes 30-60s). Downloads are blocked until this
+// completes for the requested target.
+func (b *Builder) PreBuild(ctx context.Context, logger *slog.Logger) error {
+	logger.Info("pre-building client binaries for all targets...")
+
+	tmpDir, err := os.MkdirTemp("", "trasker-prebuild-*")
+	if err != nil {
+		return fmt.Errorf("create temp dir: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	ldflags := fmt.Sprintf(
+		"-s -w -X main.apiKey=%s -X main.serverURL=%s -X main.version=%s",
+		SentinelAPIKey, SentinelServerURL, SentinelVersion,
+	)
+
+	for _, target := range SupportedTargets {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		outputPath := filepath.Join(tmpDir, target.BinaryName())
+		args := []string{
+			"build",
+			"-ldflags", ldflags,
+			"-trimpath",
+			"-o", outputPath,
+			b.ClientPkg,
+		}
+
+		cmd := exec.CommandContext(ctx, "go", args...)
+		cmd.Dir = b.SourceDir
+		cmd.Env = append(os.Environ(),
+			"GOOS="+target.OS,
+			"GOARCH="+target.Arch,
+			"CGO_ENABLED=0",
+		)
+
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			logger.Error("pre-build failed", "target", target.String(), "error", err, "output", string(output))
+			return fmt.Errorf("pre-build %s: %w\n%s", target.String(), err, output)
+		}
+
+		data, err := os.ReadFile(outputPath)
+		if err != nil {
+			return fmt.Errorf("read built binary %s: %w", target.String(), err)
+		}
+
+		// Verify sentinels are present in the binary.
+		if !bytes.Contains(data, []byte(SentinelAPIKey)) {
+			return fmt.Errorf("sentinel API key not found in %s binary", target.String())
+		}
+
+		b.mu.Lock()
+		b.cache[target.String()] = data
+		b.mu.Unlock()
+
+		logger.Info("pre-built client binary",
+			"target", target.String(),
+			"size_mb", fmt.Sprintf("%.1f", float64(len(data))/(1024*1024)),
+		)
+	}
+
+	logger.Info("all client binaries pre-built and cached")
+	return nil
+}
+
+// IsCached reports whether a pre-built binary is available for the target.
+func (b *Builder) IsCached(t Target) bool {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	_, ok := b.cache[t.String()]
+	return ok
+}
+
+// Patch takes a cached generic binary and replaces the sentinel strings with
+// real values. Returns the patched binary bytes. This is O(n) over the binary
+// size — typically ~50ms for a 15MB binary.
+func (b *Builder) Patch(req PatchRequest) ([]byte, error) {
+	b.mu.RLock()
+	generic, ok := b.cache[req.Target.String()]
+	b.mu.RUnlock()
+
+	if !ok {
+		return nil, fmt.Errorf("no cached binary for %s (pre-build may still be running)", req.Target.String())
+	}
+
+	// Pad each value to SentinelLen with null bytes.
+	paddedURL := padToLen(req.ServerURL, SentinelLen)
+	paddedKey := padToLen(req.APIKey, SentinelLen)
+	paddedVer := padToLen(req.Version, SentinelLen)
+
+	if paddedURL == nil || paddedKey == nil || paddedVer == nil {
+		return nil, fmt.Errorf("value exceeds max length of %d bytes", SentinelLen)
+	}
+
+	// Copy to avoid mutating the cached slice.
+	patched := make([]byte, len(generic))
+	copy(patched, generic)
+
+	patched = bytes.Replace(patched, []byte(SentinelServerURL), paddedURL, 1)
+	patched = bytes.Replace(patched, []byte(SentinelAPIKey), paddedKey, 1)
+	patched = bytes.Replace(patched, []byte(SentinelVersion), paddedVer, 1)
+
+	return patched, nil
+}
+
+// padToLen pads s with null bytes to exactly length n.
+// Returns nil if s is longer than n.
+func padToLen(s string, n int) []byte {
+	if len(s) > n {
+		return nil
+	}
+	buf := make([]byte, n)
+	copy(buf, s)
+	// Remaining bytes are already zero (null padding).
+	return buf
+}
+
+// --- Legacy Build method (kept for fallback / dev use) ---
+
+// BuildRequest contains all information needed to build a client binary from scratch.
 type BuildRequest struct {
 	Target    Target
-	APIKey    string // Plaintext API key to bake in
-	ServerURL string // Server URL to bake in
-	Version   string // Version string to embed
-	OutputDir string // Directory to write the binary
+	APIKey    string
+	ServerURL string
+	Version   string
+	OutputDir string
 }
 
 // BuildResult contains the result of a build.
@@ -64,85 +247,15 @@ type BuildResult struct {
 	Err        error
 }
 
-// Builder cross-compiles client binaries with stamped configuration.
-type Builder struct {
-	// SourceDir is the path to the Go module root (where go.mod lives).
-	SourceDir string
-
-	// ClientPkg is the import path of the client main package,
-	// relative to the module root.
-	ClientPkg string
-
-	mu       sync.Mutex
-	building map[string]bool // key: target string, value: in progress
-}
-
-// NewBuilder creates a Builder.
-//
-// sourceDir: absolute path to the Go module root.
-// clientPkg: relative import path, e.g. "./cmd/trasker-client".
-func NewBuilder(sourceDir, clientPkg string) *Builder {
-	return &Builder{
-		SourceDir: sourceDir,
-		ClientPkg: clientPkg,
-		building:  make(map[string]bool),
-	}
-}
-
-// IsBuilding reports whether a build is in progress for the given target.
-func (b *Builder) IsBuilding(t Target) bool {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.building[t.String()]
-}
-
-// Build cross-compiles the client binary for the given request.
-//
-// It sets GOOS/GOARCH and uses -ldflags to stamp the API key, server URL,
-// and version into the binary. Since trasker uses modernc.org/sqlite (pure Go),
-// CGO_ENABLED=0 works for all targets — no C cross-compilers needed.
-//
-// NOTE: This invokes `go build` directly, so the Go toolchain must be available.
-// In Docker deployment, the server API container does NOT include Go.
-// The builder runs inside the separate Dockerfile.builder container.
-// The server API invokes builds via `docker exec` or a build queue:
-//
-//	docker exec trasker-builder /build.sh --goos=linux --goarch=amd64 --api-key=... --server-url=...
-//
-// The Build() method below is used when Go is available locally (dev mode).
-// For production Docker deployment, use BuildViaDocker() which shells out to the builder container.
+// Build cross-compiles the client binary from scratch. This is the slow path
+// (10-30s per target). Prefer PreBuild + Patch for production use.
 func (b *Builder) Build(ctx context.Context, req BuildRequest) BuildResult {
-	targetKey := req.Target.String()
-
-	b.mu.Lock()
-	if b.building[targetKey] {
-		b.mu.Unlock()
-		return BuildResult{
-			Target: req.Target,
-			Err:    fmt.Errorf("build already in progress for %s", targetKey),
-		}
-	}
-	b.building[targetKey] = true
-	b.mu.Unlock()
-
-	defer func() {
-		b.mu.Lock()
-		delete(b.building, targetKey)
-		b.mu.Unlock()
-	}()
-
-	// Ensure output directory exists
 	if err := os.MkdirAll(req.OutputDir, 0o755); err != nil {
 		return BuildResult{Target: req.Target, Err: fmt.Errorf("create output dir: %w", err)}
 	}
 
 	outputPath := filepath.Join(req.OutputDir, req.Target.BinaryName())
 
-	// Build ldflags to stamp values into the binary.
-	// These correspond to variables in cmd/trasker-client/main.go:
-	//   var apiKey string
-	//   var serverURL string
-	//   var version string
 	ldflags := fmt.Sprintf(
 		"-s -w -X main.apiKey=%s -X main.serverURL=%s -X main.version=%s",
 		req.APIKey, req.ServerURL, req.Version,
@@ -153,10 +266,8 @@ func (b *Builder) Build(ctx context.Context, req BuildRequest) BuildResult {
 		"-ldflags", ldflags,
 		"-trimpath",
 		"-o", outputPath,
-		req.Target.BinaryName(), // throwaway — overridden by -o
+		b.ClientPkg,
 	}
-	// The actual package to build
-	args[len(args)-1] = b.ClientPkg
 
 	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.Dir = b.SourceDir
@@ -179,3 +290,16 @@ func (b *Builder) Build(ctx context.Context, req BuildRequest) BuildResult {
 		Target:     req.Target,
 	}
 }
+
+// CacheStatus returns a summary of cached targets for status endpoints.
+func (b *Builder) CacheStatus() map[string]bool {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	status := make(map[string]bool, len(SupportedTargets))
+	for _, t := range SupportedTargets {
+		_, ok := b.cache[t.String()]
+		status[t.String()] = ok
+	}
+	return status
+}
+

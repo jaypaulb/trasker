@@ -69,23 +69,23 @@
   };
 
   const actionColors: Record<string, string> = {
-    'entry.edit': 'bg-amber-50 text-amber-700',
-    'entry.delete': 'bg-red-50 text-red-700',
-    'user.role_change': 'bg-blue-50 text-blue-700',
-    'key.revoke': 'bg-red-50 text-red-700',
-    'settings.update': 'bg-gray-100 text-gray-700',
+    'entry.edit': 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+    'entry.delete': 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+    'user.role_change': 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+    'key.revoke': 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+    'settings.update': 'bg-gray-100 text-gray-700 dark:bg-slate-700 dark:text-gray-300',
   };
 </script>
 
 <div class="space-y-6">
-  <h1 class="text-2xl font-bold text-gray-900">Audit Log</h1>
+  <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Audit Log</h1>
 
-  <div class="bg-white rounded-lg shadow-sm border p-4 flex items-center gap-4 flex-wrap">
+  <div class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border dark:border-slate-700 p-4 flex items-center gap-4 flex-wrap">
     <DateRangeFilter bind:from bind:to onchange={handleDateChange} />
 
     <div class="flex items-center gap-2">
-      <label class="text-sm text-gray-500">Action</label>
-      <select onchange={handleActionFilter} class="border rounded px-2 py-1 text-sm">
+      <label class="text-sm text-gray-500 dark:text-gray-400">Action</label>
+      <select onchange={handleActionFilter} class="border dark:border-slate-600 rounded px-2 py-1 text-sm bg-white dark:bg-slate-700 dark:text-gray-200">
         {#each actionTypes as action}
           <option value={action}>{action ? (actionLabels[action] ?? action) : 'All Actions'}</option>
         {/each}
@@ -94,40 +94,40 @@
   </div>
 
   {#if loading}
-    <div class="text-gray-500">Loading audit log...</div>
+    <div class="text-gray-500 dark:text-gray-400">Loading audit log...</div>
   {:else if error}
-    <div class="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4">{error}</div>
+    <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 rounded-lg p-4">{error}</div>
   {:else if entries.length === 0}
-    <div class="bg-white rounded-lg shadow-sm border p-8 text-center text-gray-400">
+    <div class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border dark:border-slate-700 p-8 text-center text-gray-400 dark:text-gray-500">
       No audit log entries for the selected period and filter.
     </div>
   {:else}
     <div class="space-y-3">
       {#each entries as entry}
-        <div class="bg-white rounded-lg shadow-sm border p-4">
+        <div class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border dark:border-slate-700 p-4">
           <div class="flex items-center gap-3 mb-2">
-            <span class="inline-block px-2 py-0.5 text-xs rounded-full {actionColors[entry.action] ?? 'bg-gray-100 text-gray-700'}">
+            <span class="inline-block px-2 py-0.5 text-xs rounded-full {actionColors[entry.action] ?? 'bg-gray-100 text-gray-700 dark:bg-slate-700 dark:text-gray-300'}">
               {actionLabels[entry.action] ?? entry.action}
             </span>
-            <span class="text-sm text-gray-900 font-medium">
+            <span class="text-sm text-gray-900 dark:text-white font-medium">
               {entry.admin_name ?? entry.admin_id.slice(0, 8)}
             </span>
-            <span class="text-xs text-gray-400">{formatTimestamp(entry.created_at)}</span>
+            <span class="text-xs text-gray-400 dark:text-gray-500">{formatTimestamp(entry.created_at)}</span>
           </div>
 
-          <div class="text-xs text-gray-500 mb-1">
+          <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">
             Target: <span class="font-mono">{entry.target_type} / {entry.target_id.slice(0, 8)}...</span>
           </div>
 
           {#if entry.old_value || entry.new_value}
             <div class="grid grid-cols-2 gap-3 mt-2">
               <div>
-                <span class="text-xs text-gray-400">Before:</span>
-                <pre class="text-xs bg-red-50 rounded p-2 mt-1 overflow-auto max-h-32">{formatJson(entry.old_value)}</pre>
+                <span class="text-xs text-gray-400 dark:text-gray-500">Before:</span>
+                <pre class="text-xs bg-red-50 dark:bg-red-900/20 dark:text-red-300 rounded p-2 mt-1 overflow-auto max-h-32">{formatJson(entry.old_value)}</pre>
               </div>
               <div>
-                <span class="text-xs text-gray-400">After:</span>
-                <pre class="text-xs bg-green-50 rounded p-2 mt-1 overflow-auto max-h-32">{formatJson(entry.new_value)}</pre>
+                <span class="text-xs text-gray-400 dark:text-gray-500">After:</span>
+                <pre class="text-xs bg-green-50 dark:bg-green-900/20 dark:text-green-300 rounded p-2 mt-1 overflow-auto max-h-32">{formatJson(entry.new_value)}</pre>
               </div>
             </div>
           {/if}

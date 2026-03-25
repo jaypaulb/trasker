@@ -40,18 +40,18 @@
 
 <div class="flex items-center gap-3 flex-wrap">
   <div class="flex items-center gap-2">
-    <label class="text-sm text-gray-500">From</label>
+    <label class="text-sm text-gray-500 dark:text-gray-400">From</label>
     <input type="date" bind:value={from} onchange={handleChange}
-      class="border rounded px-2 py-1 text-sm" />
+      class="border dark:border-slate-600 rounded px-2 py-1 text-sm bg-white dark:bg-slate-700 dark:text-gray-200" />
   </div>
   <div class="flex items-center gap-2">
-    <label class="text-sm text-gray-500">To</label>
+    <label class="text-sm text-gray-500 dark:text-gray-400">To</label>
     <input type="date" bind:value={to} onchange={handleChange}
-      class="border rounded px-2 py-1 text-sm" />
+      class="border dark:border-slate-600 rounded px-2 py-1 text-sm bg-white dark:bg-slate-700 dark:text-gray-200" />
   </div>
   <div class="flex gap-1">
-    <button onclick={setThisWeek} class="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded">This Week</button>
-    <button onclick={setThisMonth} class="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded">This Month</button>
-    <button onclick={setLast30Days} class="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded">Last 30 Days</button>
+    <button onclick={setThisWeek} class="px-2 py-1 text-xs bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 dark:text-gray-300 rounded">This Week</button>
+    <button onclick={setThisMonth} class="px-2 py-1 text-xs bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 dark:text-gray-300 rounded">This Month</button>
+    <button onclick={setLast30Days} class="px-2 py-1 text-xs bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 dark:text-gray-300 rounded">Last 30 Days</button>
   </div>
 </div>

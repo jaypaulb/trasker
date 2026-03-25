@@ -10,6 +10,11 @@ import (
 	"github.com/godbus/dbus/v5"
 )
 
+// New creates a platform-appropriate Notifier.
+func New() (Notifier, error) {
+	return NewLinuxNotifier()
+}
+
 // LinuxNotifier sends notifications via org.freedesktop.Notifications (libnotify/DBus).
 type LinuxNotifier struct {
 	conn      *dbus.Conn

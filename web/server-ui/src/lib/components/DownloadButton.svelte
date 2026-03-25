@@ -50,5 +50,5 @@
   {/if}
 </button>
 {#if error}
-  <p class="text-xs text-red-600 mt-1">{error}</p>
+  <p class="text-xs text-red-600 dark:text-red-400 mt-1">{error}</p>
 {/if}
