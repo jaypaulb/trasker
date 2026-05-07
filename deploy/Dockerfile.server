@@ -1,9 +1,18 @@
 # ============================================
-# Stage 1: Build the Go API server binary
+# Stage 1: Build the dashboard SPA
 # ============================================
-FROM golang:1.23-alpine AS builder
+FROM node:22-slim AS spa-builder
 
-RUN apk add --no-cache git
+WORKDIR /spa
+COPY web/server-ui/package.json web/server-ui/package-lock.json ./
+RUN npm ci
+COPY web/server-ui/ ./
+RUN npm run build
+
+# ============================================
+# Stage 2: Build the Go server binary
+# ============================================
+FROM golang:1.25-bookworm AS go-builder
 
 WORKDIR /src
 
@@ -14,27 +23,23 @@ RUN go mod download
 # Copy source
 COPY . .
 
-# Build server binary
-# CGO_ENABLED=0 for static binary (no CGo dependencies in server)
-RUN CGO_ENABLED=0 GOOS=linux go build \
+# Copy SPA build output into server embed directory.
+# `go:embed all:static` in internal/server/webui/embed.go picks this up.
+COPY --from=spa-builder /spa/build/ ./internal/server/webui/static/
+
+# Build server binary (static, no CGo)
+RUN CGO_ENABLED=0 go build \
     -ldflags="-s -w" \
     -trimpath \
     -o /out/trasker-server \
     ./cmd/trasker-server
 
 # ============================================
-# Stage 2: Build the Svelte SPA (for embedding or reference)
-# ============================================
-# Note: The SPA is served by nginx in docker-compose, not embedded in the Go binary.
-# This stage is here for build pipeline completeness — the built assets
-# can be copied to the nginx volume.
-
-# ============================================
 # Stage 3: Runtime
 # ============================================
 FROM alpine:3.20
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata wget
 
 # Create non-root user
 RUN addgroup -g 1001 trasker && \
@@ -42,16 +47,21 @@ RUN addgroup -g 1001 trasker && \
 
 WORKDIR /app
 
-COPY --from=builder /out/trasker-server .
+COPY --from=go-builder /out/trasker-server .
 
-# Copy migrations for the server to run on startup
+# Copy migrations directly from build context
 COPY migrations/ ./migrations/
 
-# Build cache directory for cross-compiled client binaries
-RUN mkdir -p /tmp/trasker-builds && chown trasker:trasker /tmp/trasker-builds
+# Copy pre-compiled client binaries (CI places them in deploy/clients/).
+# The directory always exists (.gitkeep) so this never fails; if it's empty,
+# the server falls back to runtime compilation or disables downloads.
+COPY deploy/clients/ /app/clients/
+
+# Data directory for JWT secret + cert cache (volume-mounted in production)
+RUN mkdir -p /data/certs && chown -R trasker:trasker /data /app/clients
 
 USER trasker
 
-EXPOSE 8080
+EXPOSE 443 80 8080
 
 ENTRYPOINT ["./trasker-server"]
