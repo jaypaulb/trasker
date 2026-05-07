@@ -2,7 +2,8 @@ import { get } from 'svelte/store';
 import { tokens, clearAuth } from '$lib/stores/auth';
 import type {
   User, Device, Timesheet, TimesheetEntry,
-  ReportSummary, AuditLogEntry, OrgSettings, ApiKey, BuildStatus, AuthTokens
+  ReportSummary, AuditLogEntry, OrgSettings, ApiKey, BuildStatus, AuthTokens,
+  LayoutSnapshot, LayoutTimelineEntry
 } from '$lib/types';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
@@ -155,6 +156,17 @@ export const api = {
       if (params?.user_id) query.set('user_id', params.user_id);
       const qs = query.toString();
       return request('GET', `/timesheets/team${qs ? '?' + qs : ''}`);
+    },
+  },
+
+  // Layout snapshots (Phase 7)
+  layout: {
+    timeline(params: { device_id: string; from: string; to: string }): Promise<LayoutTimelineEntry[]> {
+      const q = new URLSearchParams(params).toString();
+      return request('GET', `/layout-snapshots/timeline?${q}`);
+    },
+    at(device_id: string, t: string): Promise<LayoutSnapshot> {
+      return request('GET', `/layout-snapshots?device_id=${device_id}&t=${encodeURIComponent(t)}`);
     },
   },
 
