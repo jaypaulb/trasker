@@ -110,16 +110,23 @@ func run(logger *slog.Logger) error {
 	// API key adapter
 	apiKeyAuth := api.NewStoreAPIKeyAdapter(s)
 
-	// Client builder (optional — only available when Go toolchain is installed)
+	// Client builder: try pre-compiled binaries first (production, baked in by
+	// CI), fall back to runtime compilation when a Go toolchain is available
+	// (development).
 	var clientBuilder *builder.Builder
-	if _, err := exec.LookPath("go"); err == nil {
-		// Find Go module root: look for go.mod starting from the executable's directory
+
+	// 1. Try loading pre-compiled binaries from disk (CI-built, baked into image)
+	preloaded := builder.NewEmptyBuilder()
+	loaded := preloaded.LoadFromDir(builder.ClientBinDir, logger)
+	if loaded > 0 {
+		clientBuilder = preloaded
+		logger.Info("loaded pre-compiled client binaries", "count", loaded, "total", len(builder.SupportedTargets))
+	} else if _, err := exec.LookPath("go"); err == nil {
+		// 2. Fall back to runtime compilation (dev mode with Go toolchain)
 		moduleRoot := findModuleRoot()
 		if moduleRoot != "" {
 			clientBuilder = builder.NewBuilder(moduleRoot, "./cmd/trasker-client")
 			logger.Info("client builder available — pre-building binaries in background", "module_root", moduleRoot)
-
-			// Pre-build all targets in the background so downloads are instant.
 			go func() {
 				if err := clientBuilder.PreBuild(ctx, logger); err != nil {
 					logger.Error("pre-build failed — downloads will be unavailable", "error", err)
@@ -129,7 +136,7 @@ func run(logger *slog.Logger) error {
 			logger.Warn("Go toolchain found but go.mod not found — client builds disabled")
 		}
 	} else {
-		logger.Info("Go toolchain not found — client binary builds disabled")
+		logger.Info("no pre-compiled binaries and no Go toolchain — client downloads disabled")
 	}
 
 	// Router

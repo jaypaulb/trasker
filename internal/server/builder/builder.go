@@ -107,6 +107,53 @@ func NewBuilder(sourceDir, clientPkg string) *Builder {
 	}
 }
 
+// ClientBinDir is the default directory for pre-compiled client binaries
+// baked into the container image by CI.
+const ClientBinDir = "/app/clients"
+
+// NewEmptyBuilder creates a Builder with no source directory (for loading
+// pre-compiled binaries only — production deployments without a Go toolchain).
+func NewEmptyBuilder() *Builder {
+	return &Builder{
+		cache: make(map[string][]byte),
+	}
+}
+
+// LoadFromDir loads pre-compiled generic binaries from a directory on disk.
+// Files must be named trasker-client-{os}-{arch}[.exe] and contain the API
+// key sentinel (verifying they were built with the right ldflags). Returns
+// the number of targets loaded. If the directory doesn't exist or is empty,
+// returns 0 (not an error — caller should fall back to PreBuild or Build).
+func (b *Builder) LoadFromDir(dir string, logger *slog.Logger) int {
+	loaded := 0
+	for _, target := range SupportedTargets {
+		path := filepath.Join(dir, target.BinaryName())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+
+		// Verify sentinel is present (catches binaries built without
+		// the right ldflags — they'd be unpatchable at download time).
+		if !bytes.Contains(data, []byte(SentinelAPIKey)) {
+			logger.Warn("pre-compiled binary missing sentinel, skipping",
+				"target", target.String(), "path", path)
+			continue
+		}
+
+		b.mu.Lock()
+		b.cache[target.String()] = data
+		b.mu.Unlock()
+
+		logger.Info("loaded pre-compiled client binary",
+			"target", target.String(),
+			"size_mb", fmt.Sprintf("%.1f", float64(len(data))/(1024*1024)),
+		)
+		loaded++
+	}
+	return loaded
+}
+
 // PreBuild compiles all supported targets with sentinel values and caches
 // the resulting binaries in memory. Call this once at server startup (in a
 // background goroutine — it takes 30-60s). Downloads are blocked until this
