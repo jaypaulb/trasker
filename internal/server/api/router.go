@@ -92,6 +92,9 @@ func NewRouter(deps *Dependencies) http.Handler {
 
 				r.Post("/timesheets", timesheetSubmitHandler(deps))
 				r.Get("/timesheets", timesheetListOwnHandler(deps))
+
+				// Layout snapshots ingest (Phase 7)
+				r.Post("/layout-snapshots", layoutIngestHandler(deps))
 			})
 		}
 
@@ -107,6 +110,10 @@ func NewRouter(deps *Dependencies) http.Handler {
 				// Dashboard data (own)
 				r.Get("/timesheets", timesheetListOwnHandler(deps))
 				r.Get("/devices", deviceListHandler(deps))
+
+				// Layout snapshots dashboard reads (Phase 7)
+				r.Get("/layout-snapshots", layoutAtHandler(deps))
+				r.Get("/layout-snapshots/timeline", layoutTimelineHandler(deps))
 
 				// Timesheets (team view, manager+)
 				r.Get("/timesheets/team", auth.RequireRole(models.RoleManager, models.RoleAdmin)(http.HandlerFunc(timesheetListTeamHandler(deps))).ServeHTTP)
