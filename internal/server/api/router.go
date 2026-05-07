@@ -3,9 +3,11 @@ package api
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -13,6 +15,7 @@ import (
 	"github.com/jaypaulb/trasker/internal/server/auth"
 	"github.com/jaypaulb/trasker/internal/server/builder"
 	"github.com/jaypaulb/trasker/internal/server/store"
+	"github.com/jaypaulb/trasker/internal/server/webui"
 	"github.com/jaypaulb/trasker/internal/shared/models"
 )
 
@@ -24,6 +27,10 @@ type Dependencies struct {
 	APIKeyAuth auth.APIKeyLookup
 	Builder    *builder.Builder
 	Logger     *slog.Logger
+	// FQDN is the public hostname when running behind autocert TLS. When set,
+	// it is used to derive absolute URLs (client binary server URL, OIDC
+	// redirect URL). Empty in local-dev / plain-HTTP mode.
+	FQDN string
 }
 
 // initOIDCFromSettings lazily initializes OIDC from the org_settings table.
@@ -155,13 +162,47 @@ func NewRouter(deps *Dependencies) http.Handler {
 		}
 	})
 
+	// Serve embedded dashboard SPA for all non-API routes.
+	// The SPA handles client-side routing — unknown paths get index.html.
+	spaFS, err := fs.Sub(webui.Assets, "static")
+	if err != nil {
+		// Should never happen — embedded FS is compile-time
+		panic(fmt.Sprintf("embedded SPA filesystem: %v", err))
+	}
+	fileServer := http.FileServer(http.FS(spaFS))
+
+	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
+		// Try to serve the file directly. If it doesn't exist, fall through to
+		// index.html (SPA client-side routing).
+		path := r.URL.Path
+		if path == "/" {
+			path = "/index.html"
+		}
+
+		f, err := spaFS.Open(strings.TrimPrefix(path, "/"))
+		if err == nil {
+			f.Close()
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+
+		// File doesn't exist — serve index.html for SPA routing
+		r.URL.Path = "/"
+		fileServer.ServeHTTP(w, r)
+	})
+
 	return r
 }
 
-// entraRedirectURL returns the OIDC redirect URL from env or a sensible default.
+// entraRedirectURL returns the OIDC redirect URL.
+// Precedence: explicit ENTRA_REDIRECT_URL > derived from TRASKER_FQDN >
+// localhost dev default.
 func entraRedirectURL() string {
 	if u := os.Getenv("ENTRA_REDIRECT_URL"); u != "" {
 		return u
+	}
+	if fqdn := os.Getenv("TRASKER_FQDN"); fqdn != "" {
+		return fmt.Sprintf("https://%s/auth/callback", fqdn)
 	}
 	return "http://localhost:5173/auth/callback"
 }

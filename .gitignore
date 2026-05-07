@@ -15,6 +15,10 @@
 !.planning
 !.planning/**
 
+# Except GitHub workflows / config
+!.github
+!.github/**
+
 # Build output
 dist/
 build/
