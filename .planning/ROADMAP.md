@@ -105,11 +105,11 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Depends on**: Phase 6
 **Requirements**: REQ-layout-snapshots
 **Success Criteria** (what must be TRUE):
-  1. With the daemon running, a new `layout_snapshots` row is written to local SQLite every 60s, containing per-window `app_name`, `window_title`, display index, x/y/width/height, z-order, and a UTC timestamp.
-  2. Layout snapshots sync to the server using the existing API-key auth path; on-device retention and server retention are separately configurable; submitted-timesheet immutability is preserved (snapshots are independent of focus_events).
-  3. Per-platform window enumeration works on Linux (X11 + Wayland), macOS (CGWindowListCopyWindowInfo / Accessibility), and Windows (EnumWindows + GetWindowRect / per-monitor DPI), reporting all visible windows on all displays.
-  4. The server dashboard exposes a "Layout History" view that lets the user pick a device + timestamp and see the windows that were open then; a "Merged" mode shows all devices' layouts at the chosen instant side by side.
-  5. Layout-snapshot capture is privacy-preserving — it captures only the same `app_name + window_title + geometry` shape, never window contents, screenshots, or focus *content* beyond what the existing focus tracker already stores.
+  1. On change (evaluated every 60s), a new `layout_snapshots` row is written to local SQLite — same set of `(app_name, window_title, x, y, w, h)` tuples produces no row, any change produces a row containing per-window `app_name`, `window_title`, x/y/width/height, and a UTC timestamp. Captured fields are exhaustive — no other per-window data is recorded; capture surface beyond geometry + identity is deferred.
+  2. Layout snapshots sync to the server using the existing API-key auth path; on-device retention (7 days raw) and server retention (raw 0–7d → 10-min 7–37d → 1-hr 37+d) are independently scheduled; submitted-timesheet immutability is preserved (snapshots are independent of focus_events).
+  3. Per-platform window enumeration works on Linux X11 (cgo + EWMH `_NET_CLIENT_LIST_STACKING` with `XQueryTree` fallback). Linux non-X11 sessions, macOS, and Windows are deferred and ship as `ErrUnsupported` stubs.
+  4. The server dashboard exposes a "Layout History" view at `/layout` that lets the user pick a timestamp (default = today; permalinked instants reachable via `?t=<ISO-8601>`) and see the windows that were open then for the current device. Per-device only; multi-device merged mode is deferred.
+  5. Layout-snapshot capture is privacy-preserving — it captures only `app_name + window_title + geometry`, never window contents, screenshots, PIDs, command lines, or focus *content* beyond what the existing focus tracker already stores.
 **Plans**: TBD
 **UI hint**: yes
 
