@@ -1,11 +1,20 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="">
+<!-- Dark mode class is set by inline script below to prevent FOUC -->
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">
+		<script>
+			(function() {
+				var theme = localStorage.getItem('trasker-theme');
+				if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+					document.documentElement.classList.add('dark');
+				}
+			})();
+		</script>
 		<div style="display: contents">%sveltekit.body%</div>
 	</body>
 </html>

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
+  import { theme, toggleTheme } from '$lib/theme';
   import type { Config } from '$lib/types';
 
   let config: Config | null = null;
@@ -75,19 +76,31 @@
   <h1 class="text-2xl font-bold mb-6">Settings</h1>
 
   {#if message}
-    <div class="mb-4 p-3 bg-blue-50 text-blue-700 rounded">{message}</div>
+    <div class="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">{message}</div>
   {/if}
 
   {#if loading || !config}
-    <p class="text-gray-500">Loading...</p>
+    <p class="text-gray-500 dark:text-gray-400">Loading...</p>
   {:else}
     <div class="space-y-6">
+      <!-- Appearance -->
+      <section>
+        <h2 class="text-lg font-semibold mb-2">Appearance</h2>
+        <div class="flex items-center gap-4">
+          <button class="px-4 py-2 rounded {$theme === 'dark' ? 'bg-gray-700 text-white' : 'bg-gray-200 text-gray-700'}"
+                  onclick={toggleTheme}>
+            {$theme === 'dark' ? 'Dark Mode' : 'Light Mode'}
+          </button>
+          <span class="text-sm text-gray-500 dark:text-gray-400">Toggle between light and dark themes</span>
+        </div>
+      </section>
+
       <!-- Device Info -->
       <section>
         <h2 class="text-lg font-semibold mb-2">Device</h2>
-        <div class="bg-gray-50 rounded-lg p-4 space-y-1 text-sm">
-          <p><span class="text-gray-500">Device ID:</span> {config.device_id}</p>
-          <p><span class="text-gray-500">Server:</span> {config.server_url}</p>
+        <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 space-y-1 text-sm">
+          <p><span class="text-gray-500 dark:text-gray-400">Device ID:</span> {config.device_id}</p>
+          <p><span class="text-gray-500 dark:text-gray-400">Server:</span> {config.server_url}</p>
         </div>
       </section>
 
@@ -95,7 +108,7 @@
       <section>
         <h2 class="text-lg font-semibold mb-2">Tracking</h2>
         <div class="flex items-center gap-4">
-          <button class="px-4 py-2 rounded {config.tracking_on ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700'}"
+          <button class="px-4 py-2 rounded {config.tracking_on ? 'bg-green-500 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'}"
                   disabled={saving}
                   onclick={toggleTracking}>
             {config.tracking_on ? 'Tracking ON' : 'Tracking OFF'}
@@ -107,7 +120,7 @@
       <section>
         <h2 class="text-lg font-semibold mb-2">Autostart</h2>
         <div class="flex items-center gap-4">
-          <button class="px-4 py-2 rounded {config.autostart ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700'}"
+          <button class="px-4 py-2 rounded {config.autostart ? 'bg-green-500 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300'}"
                   disabled={saving}
                   onclick={toggleAutostart}>
             {config.autostart ? 'Start with OS: ON' : 'Start with OS: OFF'}
@@ -121,12 +134,12 @@
         <div class="flex items-center gap-4">
           <label class="text-sm">
             Work: <input type="number" value={pomodoroDefaults.work} min="1" max="90"
-                         class="w-16 border rounded px-2 py-1"
+                         class="w-16 border dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded px-2 py-1"
                          onchange={(e) => { pomodoroDefaults.work = parseInt((e.target as HTMLInputElement).value); }} /> min
           </label>
           <label class="text-sm">
             Break: <input type="number" value={pomodoroDefaults.break} min="1" max="30"
-                          class="w-16 border rounded px-2 py-1"
+                          class="w-16 border dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded px-2 py-1"
                           onchange={(e) => { pomodoroDefaults.break = parseInt((e.target as HTMLInputElement).value); }} /> min
           </label>
           <button class="px-3 py-1 bg-blue-500 text-white rounded text-sm"
@@ -139,8 +152,8 @@
       <!-- Presence Intervals -->
       <section>
         <h2 class="text-lg font-semibold mb-2">Presence Check Intervals</h2>
-        <p class="text-sm text-gray-600">{config.presence_intervals}</p>
-        <p class="text-xs text-gray-400 mt-1">Minutes before each "Still there?" check when no focus change occurs.</p>
+        <p class="text-sm text-gray-600 dark:text-gray-400">{config.presence_intervals}</p>
+        <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Minutes before each "Still there?" check when no focus change occurs.</p>
       </section>
     </div>
   {/if}

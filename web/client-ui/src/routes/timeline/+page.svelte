@@ -60,25 +60,25 @@
   <h1 class="text-2xl font-bold mb-6">Timeline</h1>
 
   {#if loading}
-    <p class="text-gray-500">Loading...</p>
+    <p class="text-gray-500 dark:text-gray-400">Loading...</p>
   {:else}
     <div class="space-y-2">
       {#each events as event}
-        <div class="border rounded-lg p-3 hover:bg-gray-50 {event.is_idle ? 'opacity-50' : ''}">
+        <div class="border dark:border-gray-700 rounded-lg p-3 hover:bg-gray-50 dark:hover:bg-gray-800 {event.is_idle ? 'opacity-50' : ''}">
           <div class="flex items-center gap-3">
             <!-- Time -->
-            <span class="text-sm text-gray-500 w-16 shrink-0">
+            <span class="text-sm text-gray-500 dark:text-gray-400 w-16 shrink-0">
               {formatTime(event.started_at)}
             </span>
 
             <!-- App + Title -->
             <div class="flex-1 min-w-0">
               <p class="font-medium truncate">{event.app_name}</p>
-              <p class="text-sm text-gray-600 truncate">{event.window_title}</p>
+              <p class="text-sm text-gray-600 dark:text-gray-400 truncate">{event.window_title}</p>
             </div>
 
             <!-- Duration -->
-            <span class="text-sm text-gray-500 w-16 text-right">
+            <span class="text-sm text-gray-500 dark:text-gray-400 w-16 text-right">
               {formatDuration(event.duration_s)}
             </span>
 
@@ -90,7 +90,7 @@
                   {event.tag_name}
                 </span>
               {:else}
-                <select class="text-xs border rounded p-1 w-full"
+                <select class="text-xs border dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded p-1 w-full"
                         onchange={(e) => setTag(event.id, parseInt((e.target as HTMLSelectElement).value))}>
                   <option value="">Tag...</option>
                   {#each tags as tag}
@@ -101,7 +101,7 @@
             </div>
 
             <!-- Note button -->
-            <button class="text-gray-400 hover:text-blue-500 text-sm"
+            <button class="text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 text-sm"
                     onclick={() => { editingNote = editingNote === event.id ? null : event.id; noteText = event.note_text ?? ''; }}>
               {event.note_text ? '📝' : '+note'}
             </button>
@@ -111,7 +111,7 @@
           {#if editingNote === event.id}
             <div class="mt-2 flex gap-2">
               <input type="text" bind:value={noteText}
-                     class="flex-1 border rounded px-2 py-1 text-sm"
+                     class="flex-1 border dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded px-2 py-1 text-sm"
                      placeholder="Add a note..."
                      onkeydown={(e) => e.key === 'Enter' && saveNote(event.id)} />
               <button class="px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600"
@@ -123,13 +123,13 @@
 
           <!-- Existing note display -->
           {#if event.note_text && editingNote !== event.id}
-            <p class="mt-1 text-sm text-gray-600 italic ml-19">{event.note_text}</p>
+            <p class="mt-1 text-sm text-gray-600 dark:text-gray-400 italic ml-19">{event.note_text}</p>
           {/if}
         </div>
       {/each}
 
       {#if events.length === 0}
-        <p class="text-gray-400 text-center py-8">No events tracked today.</p>
+        <p class="text-gray-400 dark:text-gray-500 text-center py-8">No events tracked today.</p>
       {/if}
     </div>
   {/if}

@@ -64,14 +64,14 @@
   <h1 class="text-2xl font-bold mb-6">Today's Activity</h1>
 
   {#if loading}
-    <p class="text-gray-500">Loading...</p>
+    <p class="text-gray-500 dark:text-gray-400">Loading...</p>
   {:else}
     <!-- Current Focus -->
     {#if currentFocus}
-      <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-        <p class="text-sm text-blue-600 font-medium">Currently Focused On</p>
+      <div class="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-6">
+        <p class="text-sm text-blue-600 dark:text-blue-400 font-medium">Currently Focused On</p>
         <p class="text-lg font-semibold">{currentFocus.app_name}</p>
-        <p class="text-gray-600 text-sm truncate">{currentFocus.window_title}</p>
+        <p class="text-gray-600 dark:text-gray-400 text-sm truncate">{currentFocus.window_title}</p>
         {#if currentFocus.tag_name}
           <span class="inline-block mt-1 px-2 py-0.5 rounded text-xs text-white"
                 style="background-color: {currentFocus.tag_color}">
@@ -83,7 +83,7 @@
 
     <!-- Total Time -->
     <div class="mb-6">
-      <p class="text-gray-500 text-sm">Total tracked today</p>
+      <p class="text-gray-500 dark:text-gray-400 text-sm">Total tracked today</p>
       <p class="text-3xl font-bold">{formatDuration(totalTrackedSeconds)}</p>
     </div>
 
@@ -94,15 +94,15 @@
         <div class="flex items-center gap-3">
           <div class="w-3 h-3 rounded-full" style="background-color: {summary.color}"></div>
           <span class="flex-1 font-medium">{summary.tag}</span>
-          <span class="text-gray-600">{formatDuration(summary.totalSeconds)}</span>
-          <div class="w-24 bg-gray-200 rounded-full h-2">
+          <span class="text-gray-600 dark:text-gray-400">{formatDuration(summary.totalSeconds)}</span>
+          <div class="w-24 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
             <div class="h-2 rounded-full" style="width: {summary.percentage}%; background-color: {summary.color}"></div>
           </div>
-          <span class="text-sm text-gray-500 w-10 text-right">{summary.percentage}%</span>
+          <span class="text-sm text-gray-500 dark:text-gray-400 w-10 text-right">{summary.percentage}%</span>
         </div>
       {/each}
       {#if tagSummaries.length === 0}
-        <p class="text-gray-400">No activity tracked yet today.</p>
+        <p class="text-gray-400 dark:text-gray-500">No activity tracked yet today.</p>
       {/if}
     </div>
   {/if}

@@ -72,20 +72,20 @@
   <h1 class="text-2xl font-bold mb-6">Submit Entries</h1>
 
   {#if submitResult}
-    <div class="mb-4 p-3 rounded {submitResult.includes('failed') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}">
+    <div class="mb-4 p-3 rounded {submitResult.includes('failed') ? 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300' : 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300'}">
       {submitResult}
     </div>
   {/if}
 
   {#if loading}
-    <p class="text-gray-500">Loading...</p>
+    <p class="text-gray-500 dark:text-gray-400">Loading...</p>
   {:else}
     <!-- Actions -->
     <div class="flex items-center gap-4 mb-4">
-      <button class="text-sm text-blue-500 hover:underline" onclick={selectAll}>
+      <button class="text-sm text-blue-500 dark:text-blue-400 hover:underline" onclick={selectAll}>
         {selected.size === events.length ? 'Deselect All' : 'Select All'}
       </button>
-      <span class="text-sm text-gray-500">{selected.size} selected</span>
+      <span class="text-sm text-gray-500 dark:text-gray-400">{selected.size} selected</span>
       <button class="ml-auto px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
               disabled={selected.size === 0}
               onclick={() => showConfirm = true}>
@@ -96,7 +96,7 @@
     <!-- Event list -->
     <div class="space-y-1">
       {#each events as event}
-        <div class="flex items-center gap-3 p-2 rounded hover:bg-gray-50 cursor-pointer"
+        <div class="flex items-center gap-3 p-2 rounded hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
              onclick={() => toggleSelect(event.id)}
              onkeydown={(e) => e.key === 'Enter' && toggleSelect(event.id)}
              role="checkbox"
@@ -105,35 +105,35 @@
           <input type="checkbox" checked={selected.has(event.id)}
                  onclick={(e) => { e.stopPropagation(); toggleSelect(event.id); }}
                  class="rounded" />
-          <span class="text-sm text-gray-500 w-16">{formatTime(event.started_at)}</span>
+          <span class="text-sm text-gray-500 dark:text-gray-400 w-16">{formatTime(event.started_at)}</span>
           <span class="flex-1 truncate">{event.app_name}</span>
           <span class="px-2 py-0.5 rounded text-xs text-white"
                 style="background-color: {event.tag_color}">
             {event.tag_name}
           </span>
-          <span class="text-sm text-gray-500 w-12 text-right">{formatDuration(event.duration_s)}</span>
+          <span class="text-sm text-gray-500 dark:text-gray-400 w-12 text-right">{formatDuration(event.duration_s)}</span>
         </div>
       {/each}
     </div>
 
     {#if events.length === 0}
-      <p class="text-gray-400 text-center py-8">No tagged entries to submit. Tag your events first.</p>
+      <p class="text-gray-400 dark:text-gray-500 text-center py-8">No tagged entries to submit. Tag your events first.</p>
     {/if}
   {/if}
 
   <!-- Confirmation dialog -->
   {#if showConfirm}
     <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div class="bg-white rounded-lg p-6 max-w-md mx-4">
+      <div class="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md mx-4">
         <h2 class="text-lg font-bold mb-3">Confirm Submission</h2>
-        <p class="text-gray-600 mb-4">
+        <p class="text-gray-600 dark:text-gray-300 mb-4">
           Submitted entries cannot be edited or deleted from your client.
           Only your org admin can modify or remove submitted entries.
           Are you sure?
         </p>
-        <p class="text-sm text-gray-500 mb-4">{selected.size} entries will be submitted.</p>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">{selected.size} entries will be submitted.</p>
         <div class="flex gap-3 justify-end">
-          <button class="px-4 py-2 border rounded hover:bg-gray-50"
+          <button class="px-4 py-2 border dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
                   onclick={() => showConfirm = false}>
             Cancel
           </button>

@@ -104,15 +104,15 @@
   <h1 class="text-2xl font-bold mb-6">Pomodoro Timer</h1>
 
   {#if loading}
-    <p class="text-gray-500">Loading...</p>
+    <p class="text-gray-500 dark:text-gray-400">Loading...</p>
   {:else}
     <!-- Timer display -->
     <div class="text-center mb-8">
       <p class="text-6xl font-mono font-bold mb-2">{timerDisplay}</p>
       {#if activePomo}
-        <p class="text-lg text-gray-600 capitalize">{activePomo.status} phase</p>
+        <p class="text-lg text-gray-600 dark:text-gray-400 capitalize">{activePomo.status} phase</p>
       {:else}
-        <p class="text-lg text-gray-400">Ready to start</p>
+        <p class="text-lg text-gray-400 dark:text-gray-500">Ready to start</p>
       {/if}
     </div>
 
@@ -128,13 +128,13 @@
       <div class="flex items-center gap-4 justify-center mb-8">
         <label class="text-sm">
           Work: <input type="number" bind:value={workMins} min="1" max="90"
-                       class="w-16 border rounded px-2 py-1" /> min
+                       class="w-16 border dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded px-2 py-1" /> min
         </label>
         <label class="text-sm">
           Break: <input type="number" bind:value={breakMins} min="1" max="30"
-                        class="w-16 border rounded px-2 py-1" /> min
+                        class="w-16 border dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded px-2 py-1" /> min
         </label>
-        <select bind:value={selectedTagId} class="border rounded px-2 py-1 text-sm">
+        <select bind:value={selectedTagId} class="border dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded px-2 py-1 text-sm">
           <option value={undefined}>No tag</option>
           {#each tags as tag}
             <option value={tag.id}>{tag.name}</option>
@@ -149,13 +149,13 @@
 
     <!-- Stats -->
     <div class="grid grid-cols-2 gap-4 mb-8">
-      <div class="bg-gray-50 rounded-lg p-4 text-center">
+      <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 text-center">
         <p class="text-3xl font-bold">{completedCount}</p>
-        <p class="text-sm text-gray-500">Completed today</p>
+        <p class="text-sm text-gray-500 dark:text-gray-400">Completed today</p>
       </div>
-      <div class="bg-gray-50 rounded-lg p-4 text-center">
+      <div class="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 text-center">
         <p class="text-3xl font-bold">{totalWorkMins}m</p>
-        <p class="text-sm text-gray-500">Focus time</p>
+        <p class="text-sm text-gray-500 dark:text-gray-400">Focus time</p>
       </div>
     </div>
 
@@ -163,12 +163,12 @@
     <h2 class="text-lg font-semibold mb-3">Recent Sessions</h2>
     <div class="space-y-2">
       {#each sessions.slice(0, 10) as session}
-        <div class="flex items-center gap-3 p-2 border rounded text-sm">
-          <span class="text-gray-500">{formatTime(session.started_at)}</span>
-          <span class="capitalize font-medium {session.status === 'done' ? 'text-green-600' : session.status === 'cancelled' ? 'text-red-500' : 'text-blue-500'}">
+        <div class="flex items-center gap-3 p-2 border dark:border-gray-700 rounded text-sm">
+          <span class="text-gray-500 dark:text-gray-400">{formatTime(session.started_at)}</span>
+          <span class="capitalize font-medium {session.status === 'done' ? 'text-green-600 dark:text-green-400' : session.status === 'cancelled' ? 'text-red-500 dark:text-red-400' : 'text-blue-500 dark:text-blue-400'}">
             {session.status}
           </span>
-          <span class="text-gray-500">{session.work_mins}m / {session.break_mins}m</span>
+          <span class="text-gray-500 dark:text-gray-400">{session.work_mins}m / {session.break_mins}m</span>
         </div>
       {/each}
     </div>
