@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -16,7 +17,9 @@ import (
 	"github.com/jaypaulb/trasker/internal/server/api"
 	"github.com/jaypaulb/trasker/internal/server/auth"
 	"github.com/jaypaulb/trasker/internal/server/builder"
+	"github.com/jaypaulb/trasker/internal/server/secrets"
 	"github.com/jaypaulb/trasker/internal/server/store"
+	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -37,7 +40,21 @@ func run(logger *slog.Logger) error {
 	// Required config — check TRASKER_* prefix first (Docker), then unprefixed (local dev)
 	dbURL := buildDatabaseURL()
 	listenAddr := envOr("LISTEN_ADDR", ":8080")
-	jwtSecret := mustEnvMulti("TRASKER_JWT_SECRET", "JWT_SECRET")
+	fqdn := os.Getenv("TRASKER_FQDN")
+
+	// JWT secret: env var → file → auto-generate
+	jwtSecret := os.Getenv("TRASKER_JWT_SECRET")
+	if jwtSecret == "" {
+		jwtSecret = os.Getenv("JWT_SECRET")
+	}
+	if jwtSecret == "" {
+		var err error
+		jwtSecret, err = secrets.LoadOrGenerateJWTSecret("", "/data/jwt-secret")
+		if err != nil {
+			return fmt.Errorf("loading JWT secret: %w", err)
+		}
+		logger.Info("JWT secret loaded from /data/jwt-secret (auto-generated if first boot)")
+	}
 
 	// Optional OIDC config — check TRASKER_* prefix first, then unprefixed
 	entraTenant := envOrMulti("TRASKER_ENTRA_TENANT", "ENTRA_TENANT_ID")
@@ -123,6 +140,7 @@ func run(logger *slog.Logger) error {
 		APIKeyAuth: apiKeyAuth,
 		Builder:    clientBuilder,
 		Logger:     logger,
+		FQDN:       fqdn,
 	}
 	router := api.NewRouter(deps)
 
@@ -133,43 +151,133 @@ func run(logger *slog.Logger) error {
 	// SIGTERM.
 	go runLayoutDownsampler(ctx, s, logger)
 
-	// Server
-	srv := &http.Server{
-		Addr:         listenAddr,
-		Handler:      router,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  60 * time.Second,
-	}
-
-	// Graceful shutdown
-	errCh := make(chan error, 1)
-	go func() {
-		logger.Info("server starting", "addr", listenAddr)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			errCh <- err
-		}
-		close(errCh)
-	}()
-
-	// Wait for interrupt
+	// Graceful shutdown signals
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
-	select {
-	case sig := <-sigCh:
-		logger.Info("received signal, shutting down", "signal", sig)
-	case err := <-errCh:
-		if err != nil {
+	if fqdn != "" {
+		// Production: autocert TLS on :443 + ACME/redirect on :80 + internal on :8080
+		certDir := "/data/certs"
+		if err := os.MkdirAll(certDir, 0700); err != nil {
+			return fmt.Errorf("creating cert cache dir: %w", err)
+		}
+
+		m := &autocert.Manager{
+			Cache:      autocert.DirCache(certDir),
+			Prompt:     autocert.AcceptTOS,
+			HostPolicy: autocert.HostWhitelist(fqdn),
+		}
+
+		// Listener 1: TLS on :443
+		tlsSrv := &http.Server{
+			Addr:         ":443",
+			Handler:      router,
+			TLSConfig:    &tls.Config{GetCertificate: m.GetCertificate},
+			ReadTimeout:  10 * time.Second,
+			WriteTimeout: 30 * time.Second,
+			IdleTimeout:  60 * time.Second,
+		}
+
+		// Listener 2: ACME challenges + HTTP→HTTPS redirect on :80
+		httpSrv := &http.Server{
+			Addr:         ":80",
+			Handler:      m.HTTPHandler(nil), // nil = default redirect to HTTPS
+			ReadTimeout:  5 * time.Second,
+			WriteTimeout: 5 * time.Second,
+		}
+
+		// Listener 3: Internal plain HTTP on :8080 for health checks and load
+		// balancer. Hardcoded to :8080 in TLS mode (not LISTEN_ADDR) because
+		// the compose health check and docs rely on this port being predictable.
+		internalSrv := &http.Server{
+			Addr:         ":8080",
+			Handler:      router,
+			ReadTimeout:  10 * time.Second,
+			WriteTimeout: 30 * time.Second,
+			IdleTimeout:  60 * time.Second,
+		}
+
+		errCh := make(chan error, 3)
+		go func() {
+			logger.Info("TLS server starting", "addr", ":443", "fqdn", fqdn)
+			if err := tlsSrv.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+				errCh <- fmt.Errorf("TLS server: %w", err)
+			}
+		}()
+		go func() {
+			logger.Info("HTTP redirect server starting", "addr", ":80")
+			if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				errCh <- fmt.Errorf("HTTP server: %w", err)
+			}
+		}()
+		go func() {
+			logger.Info("internal HTTP server starting", "addr", ":8080")
+			if err := internalSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				errCh <- fmt.Errorf("internal server: %w", err)
+			}
+		}()
+
+		select {
+		case sig := <-sigCh:
+			logger.Info("received signal, shutting down", "signal", sig)
+		case err := <-errCh:
 			return err
 		}
-	}
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer shutdownCancel()
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer shutdownCancel()
 
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("shutdown: %w", err)
+		// Shut down all three servers
+		var shutdownErr error
+		for name, srv := range map[string]*http.Server{
+			"TLS": tlsSrv, "HTTP": httpSrv, "internal": internalSrv,
+		} {
+			if err := srv.Shutdown(shutdownCtx); err != nil {
+				if shutdownErr != nil {
+					shutdownErr = fmt.Errorf("%v; %s shutdown: %w", shutdownErr, name, err)
+				} else {
+					shutdownErr = fmt.Errorf("%s shutdown: %w", name, err)
+				}
+			}
+		}
+
+		if shutdownErr != nil {
+			return shutdownErr
+		}
+	} else {
+		// Development: plain HTTP on LISTEN_ADDR
+		srv := &http.Server{
+			Addr:         listenAddr,
+			Handler:      router,
+			ReadTimeout:  10 * time.Second,
+			WriteTimeout: 30 * time.Second,
+			IdleTimeout:  60 * time.Second,
+		}
+
+		errCh := make(chan error, 1)
+		go func() {
+			logger.Info("server starting (plain HTTP)", "addr", listenAddr)
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				errCh <- err
+			}
+			close(errCh)
+		}()
+
+		select {
+		case sig := <-sigCh:
+			logger.Info("received signal, shutting down", "signal", sig)
+		case err := <-errCh:
+			if err != nil {
+				return err
+			}
+		}
+
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer shutdownCancel()
+
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("shutdown: %w", err)
+		}
 	}
 
 	logger.Info("server stopped")
@@ -202,19 +310,6 @@ func buildDatabaseURL() string {
 	return ""
 }
 
-// mustEnvMulti checks multiple env var names in order, returning the first non-empty value.
-// Exits if none are set.
-func mustEnvMulti(keys ...string) string {
-	for _, key := range keys {
-		if val := os.Getenv(key); val != "" {
-			return val
-		}
-	}
-	fmt.Fprintf(os.Stderr, "required environment variable (one of %v) is not set\n", keys)
-	os.Exit(1)
-	return ""
-}
-
 // envOrMulti checks multiple env var names in order, returning the first non-empty value,
 // or empty string if none are set.
 func envOrMulti(keys ...string) string {
@@ -233,7 +328,10 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
-// bootstrapAdmin creates the default admin account if no users exist.
+// bootstrapAdmin creates an admin account if no users exist.
+// Uses TRASKER_ADMIN_EMAIL/TRASKER_ADMIN_PASSWORD if both are set
+// (no force-change), else falls back to the default credentials with
+// force-change-on-login.
 func bootstrapAdmin(ctx context.Context, s *store.Store, logger *slog.Logger) error {
 	count, err := s.CountUsers(ctx)
 	if err != nil {
@@ -243,26 +341,43 @@ func bootstrapAdmin(ctx context.Context, s *store.Store, logger *slog.Logger) er
 		return nil
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(api.DefaultAdminPassword), bcrypt.DefaultCost)
+	adminEmail := os.Getenv("TRASKER_ADMIN_EMAIL")
+	adminPassword := os.Getenv("TRASKER_ADMIN_PASSWORD")
+	forceChange := true
+
+	if adminEmail != "" && adminPassword != "" {
+		// Custom credentials from env — no forced password change
+		forceChange = false
+	} else if adminEmail == "" && adminPassword == "" {
+		// No env vars — use defaults
+		adminEmail = api.DefaultAdminEmail
+		adminPassword = api.DefaultAdminPassword
+	} else {
+		// One set, one missing — config error
+		logger.Warn("TRASKER_ADMIN_EMAIL and TRASKER_ADMIN_PASSWORD must both be set or both be empty — skipping admin bootstrap")
+		return nil
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(adminPassword), bcrypt.DefaultCost)
 	if err != nil {
-		return fmt.Errorf("hashing default password: %w", err)
+		return fmt.Errorf("hashing admin password: %w", err)
 	}
 
 	user, err := s.CreateLocalUser(ctx, store.CreateLocalUserParams{
-		Email:               api.DefaultAdminEmail,
+		Email:               adminEmail,
 		DisplayName:         "Admin",
 		PasswordHash:        string(hash),
 		Role:                "admin",
-		ForcePasswordChange: true,
+		ForcePasswordChange: forceChange,
 	})
 	if err != nil {
 		return fmt.Errorf("creating bootstrap admin: %w", err)
 	}
 
 	logger.Info("bootstrap admin account created",
-		"email", api.DefaultAdminEmail,
+		"email", adminEmail,
 		"user_id", user.ID,
-		"note", "default password must be changed on first login",
+		"force_password_change", forceChange,
 	)
 	return nil
 }

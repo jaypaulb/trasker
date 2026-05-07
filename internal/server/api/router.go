@@ -24,6 +24,10 @@ type Dependencies struct {
 	APIKeyAuth auth.APIKeyLookup
 	Builder    *builder.Builder
 	Logger     *slog.Logger
+	// FQDN is the public hostname when running behind autocert TLS. When set,
+	// it is used to derive absolute URLs (client binary server URL, OIDC
+	// redirect URL). Empty in local-dev / plain-HTTP mode.
+	FQDN string
 }
 
 // initOIDCFromSettings lazily initializes OIDC from the org_settings table.
