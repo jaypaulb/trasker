@@ -114,3 +114,25 @@ ALTER TABLE users DROP CONSTRAINT IF EXISTS users_entra_oid_key;
 CREATE UNIQUE INDEX idx_users_entra_oid ON users (entra_oid) WHERE entra_oid IS NOT NULL;
 -- Add entra_secret to org_settings for full OIDC configuration from admin panel.
 ALTER TABLE org_settings ADD COLUMN entra_secret TEXT NOT NULL DEFAULT '';
+
+-- ===== Phase 7: layout_snapshots (mirrors migrations/004_layout_snapshots.up.sql) =====
+-- Independent of focus_events; immutability invariant on submitted timesheets preserved.
+-- pgcrypto already enabled above; gen_random_uuid() available.
+
+CREATE TABLE layout_snapshots (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    device_id    UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    captured_at  TIMESTAMPTZ NOT NULL,
+    windows      JSONB NOT NULL,
+    windows_hash TEXT NOT NULL,
+    tier         TEXT NOT NULL DEFAULT 'raw',
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT chk_layout_tier CHECK (tier IN ('raw', '10min', '1hr'))
+);
+
+CREATE INDEX idx_layout_snapshots_device_captured
+    ON layout_snapshots (device_id, captured_at DESC);
+CREATE INDEX idx_layout_snapshots_tier_captured
+    ON layout_snapshots (tier, captured_at);
+CREATE UNIQUE INDEX idx_layout_snapshots_dedup
+    ON layout_snapshots (device_id, captured_at, windows_hash);
