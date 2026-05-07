@@ -126,6 +126,13 @@ func run(logger *slog.Logger) error {
 	}
 	router := api.NewRouter(deps)
 
+	// Phase 7: layout snapshot downsampling. pg_cron is not assumed available
+	// on the deploy target (.planning/phases/07-layout-snapshots/07-RESEARCH.md
+	// Pitfall 4), so we run downsampling as an in-process Go time.Ticker. The
+	// goroutine inherits the server's lifecycle context and exits cleanly on
+	// SIGTERM.
+	go runLayoutDownsampler(ctx, s, logger)
+
 	// Server
 	srv := &http.Server{
 		Addr:         listenAddr,
