@@ -135,6 +135,20 @@ func (s *Store) migrate() error {
 		presence_intervals TEXT NOT NULL DEFAULT '[30,45,60,90,120]',
 		pomodoro_defaults  TEXT NOT NULL DEFAULT '{"work":25,"break":5}'
 	);
+
+	CREATE TABLE IF NOT EXISTS layout_snapshots (
+		id           INTEGER PRIMARY KEY,
+		captured_at  TEXT NOT NULL,
+		windows      TEXT NOT NULL,
+		windows_hash TEXT NOT NULL,
+		synced_at    TEXT,
+		retry_count  INTEGER NOT NULL DEFAULT 0,
+		last_retry   TEXT,
+		created_at   TEXT NOT NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_layout_snapshots_captured ON layout_snapshots(captured_at);
+	CREATE INDEX IF NOT EXISTS idx_layout_snapshots_pending  ON layout_snapshots(synced_at) WHERE synced_at IS NULL;
 	`
 
 	_, err := s.db.Exec(schema)
