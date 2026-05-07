@@ -1,0 +1,24 @@
+{
+  "source_path": "/home/jaypaulb/Projects/gh/trasker/docs/superpowers/plans/2026-03-23-04-server-dashboard-deploy.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Server Dashboard & Deployment Implementation Plan",
+  "summary": "Task-by-task implementation plan for building the SvelteKit server dashboard, Docker Compose deployment, and Go client cross-compilation pipeline.",
+  "scope": [
+    "SvelteKit server-ui",
+    "TailwindCSS",
+    "Docker Compose",
+    "Caddy reverse proxy",
+    "PostgreSQL",
+    "Go cross-compilation",
+    "client build pipeline",
+    "deployment"
+  ],
+  "cross_refs": [
+    "docs/superpowers/specs/2026-03-23-trasker-design.md"
+  ],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

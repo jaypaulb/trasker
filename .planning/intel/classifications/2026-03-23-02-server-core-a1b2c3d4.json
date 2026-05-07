@@ -1,0 +1,13 @@
+{
+  "source_path": "/home/jaypaulb/Projects/gh/trasker/docs/superpowers/plans/2026-03-23-02-server-core.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Server Core Implementation Plan",
+  "summary": "Step-by-step implementation plan for the Go API server: PostgreSQL store, Entra OIDC auth, API key middleware, and REST endpoints.",
+  "scope": ["server", "PostgreSQL store", "Entra OIDC auth", "API key middleware", "Chi router", "REST endpoints"],
+  "cross_refs": ["Plan 01 (shared foundation)", "Plan 03 (client code)", "Plan 04 (build pipeline)"],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

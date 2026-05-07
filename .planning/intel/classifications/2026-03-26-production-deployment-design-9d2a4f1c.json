@@ -1,0 +1,24 @@
+{
+  "source_path": "/home/jaypaulb/Projects/gh/trasker/docs/superpowers/specs/2026-03-26-production-deployment-design.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Production Deployment Design",
+  "summary": "Technical design replacing the 4-container production deployment with a 2-container setup where the Go server natively handles TLS (autocert), SPA embedding, and client binary distribution.",
+  "scope": [
+    "production deployment",
+    "Docker container image",
+    "autocert TLS",
+    "SPA embedding (go:embed)",
+    "GitHub Actions CI pipeline",
+    "client binary patching",
+    "JWT secret auto-generation",
+    "admin bootstrap",
+    "docker-compose template",
+    "trasker server binary"
+  ],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

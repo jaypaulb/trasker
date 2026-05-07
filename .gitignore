@@ -11,6 +11,10 @@
 # Except environment templates (never the actual .env, only the example)
 !.env.example
 
+# Except GSD planning directory
+!.planning
+!.planning/**
+
 # Build output
 dist/
 build/

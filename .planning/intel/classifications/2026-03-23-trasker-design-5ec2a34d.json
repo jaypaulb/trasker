@@ -1,0 +1,27 @@
+{
+  "source_path": "/home/jaypaulb/Projects/gh/trasker/docs/superpowers/specs/2026-03-23-trasker-design.md",
+  "type": "SPEC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Trasker — Design Specification",
+  "summary": "Technical design specification for Trasker, a cross-platform Go time-tracking client and self-hosted server with SQLite/PostgreSQL storage, focus tracking, tagging, and submission flow.",
+  "scope": [
+    "Trasker client daemon",
+    "Trasker server",
+    "focus window tracking",
+    "SQLite local storage",
+    "PostgreSQL server storage",
+    "tagging system",
+    "note cascade",
+    "presence detection",
+    "pomodoro timer",
+    "submission API",
+    "Entra OIDC auth",
+    "Docker Compose deployment",
+    "Svelte dashboards"
+  ],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}

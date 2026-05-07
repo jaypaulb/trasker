@@ -1,0 +1,13 @@
+{
+  "source_path": "/home/jaypaulb/Projects/gh/trasker/docs/superpowers/plans/2026-03-23-01-shared-foundation.md",
+  "type": "DOC",
+  "confidence": "high",
+  "manifest_override": true,
+  "title": "Shared Foundation Implementation Plan",
+  "summary": "Step-by-step implementation plan for initializing the trasker Go module with shared packages (models, apikey, version) and build infrastructure.",
+  "scope": ["go-module", "cmd/trasker-client", "cmd/trasker-server", "internal/shared/version", "internal/shared/models", "internal/shared/apikey", "Makefile", "build-infrastructure"],
+  "cross_refs": [],
+  "locked": false,
+  "precedence": null,
+  "notes": ""
+}
