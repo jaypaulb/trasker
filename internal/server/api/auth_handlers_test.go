@@ -37,8 +37,14 @@ func TestAuthRefresh_ValidToken(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 
-	var resp map[string]string
+	var resp struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		ExpiresAt    int64  `json:"expires_at"`
+	}
 	err = json.Unmarshal(rr.Body.Bytes(), &resp)
 	require.NoError(t, err)
-	assert.NotEmpty(t, resp["token"])
+	assert.NotEmpty(t, resp.AccessToken)
+	assert.NotEmpty(t, resp.RefreshToken)
+	assert.Greater(t, resp.ExpiresAt, time.Now().Unix())
 }
