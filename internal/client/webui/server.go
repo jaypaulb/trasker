@@ -12,6 +12,29 @@ import (
 	"time"
 )
 
+// StatusProvider exposes live runtime metrics for the /api/status
+// endpoint. The daemon registers a provider after wiring its components;
+// the API uses nil-safe accessors so the endpoint still works (with
+// "unavailable" fields) before registration completes.
+//
+// All fields are best-effort snapshots — implementations should be
+// goroutine-safe and non-blocking. The status endpoint is hit by
+// `trasker-client status` and must not stall on slow DB queries.
+type StatusProvider interface {
+	// PresenceState returns a human-readable presence state name
+	// ("TRACKING", "AWAY", "PAUSED", "CHECKING") or "" if unknown.
+	PresenceState() string
+	// ScreenLockState returns "LOCKED", "UNLOCKED", or "" if unknown.
+	ScreenLockState() string
+	// LastLayoutSnapshot returns the captured_at of the most recent
+	// layout snapshot, or zero Time if none / layout disabled.
+	LastLayoutSnapshot() time.Time
+	// LastServerSync returns the wall-clock time of the most recent
+	// successful server sync (focus events or layout snapshots),
+	// or zero Time if none.
+	LastServerSync() time.Time
+}
+
 // Server serves the local web dashboard and REST API.
 type Server struct {
 	db       *sql.DB
@@ -21,6 +44,8 @@ type Server struct {
 	port     int
 	listener net.Listener
 	quitCh   chan struct{} // closed when quit is requested via API
+	status   StatusProvider
+	started  time.Time // server start time, used for uptime in /api/status
 }
 
 // NewServer creates a new webui server.
@@ -45,6 +70,13 @@ func (s *Server) Port() int {
 	return s.port
 }
 
+// SetStatusProvider registers the live-metrics source used by
+// /api/status. May be called before or after Start. Pass nil to
+// detach (the endpoint then reports "unavailable" for those fields).
+func (s *Server) SetStatusProvider(p StatusProvider) {
+	s.status = p
+}
+
 // Start begins serving. Non-blocking.
 func (s *Server) Start() error {
 	var err error
@@ -53,6 +85,7 @@ func (s *Server) Start() error {
 	if err != nil {
 		return fmt.Errorf("webui: listen: %w", err)
 	}
+	s.started = time.Now()
 
 	s.srv = &http.Server{
 		Handler:      s.mux,
@@ -86,6 +119,18 @@ func (s *Server) URL() string {
 // QuitCh returns a channel that is closed when quit is requested via the API.
 func (s *Server) QuitCh() <-chan struct{} {
 	return s.quitCh
+}
+
+// StartedAt returns the wall-clock time the server started serving.
+// Used by /api/status to compute uptime. Returns zero Time before Start().
+func (s *Server) StartedAt() time.Time {
+	return s.started
+}
+
+// Status returns the registered StatusProvider, or nil if none.
+// Used internally by the /api/status handler; exposed for tests.
+func (s *Server) Status() StatusProvider {
+	return s.status
 }
 
 // RequestQuit signals that the client should shut down (called by the quit API endpoint).
