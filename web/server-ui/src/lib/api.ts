@@ -108,8 +108,9 @@ export const api = {
     config(): Promise<{ oidc_enabled: boolean; local_enabled: boolean }> {
       return request('GET', '/auth/config', undefined, { skipAuth: true });
     },
-    /** Change password (requires auth) */
-    changePassword(current_password: string, new_password: string): Promise<{ status: string }> {
+    /** Change password (requires auth). Returns the updated user with
+     *  force_password_change cleared, so callers can refresh the local store. */
+    changePassword(current_password: string, new_password: string): Promise<{ status: string; user: User }> {
       return request('POST', '/auth/change-password', { current_password, new_password });
     },
     refresh(refresh_token: string): Promise<AuthTokens> {

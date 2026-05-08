@@ -148,12 +148,24 @@ func changePasswordHandler(deps *Dependencies) http.HandlerFunc {
 			return
 		}
 
-		if _, err := deps.Store.UpdateUserPassword(r.Context(), userID, string(hash)); err != nil {
+		updated, err := deps.Store.UpdateUserPassword(r.Context(), userID, string(hash))
+		if err != nil {
 			deps.Logger.Error("failed to update password", "error", err, "user_id", userID)
 			respondError(w, http.StatusInternalServerError, "failed to update password")
 			return
 		}
 
-		respondJSON(w, http.StatusOK, map[string]string{"status": "password changed"})
+		// Return the updated user so the SPA can clear force_password_change
+		// in its local store without an extra round-trip.
+		respondJSON(w, http.StatusOK, map[string]any{
+			"status": "password changed",
+			"user": map[string]any{
+				"id":                    updated.ID,
+				"email":                 updated.Email,
+				"display_name":          updated.DisplayName,
+				"role":                  updated.Role,
+				"force_password_change": updated.ForcePasswordChange,
+			},
+		})
 	}
 }

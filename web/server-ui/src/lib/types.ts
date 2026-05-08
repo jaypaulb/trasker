@@ -6,6 +6,9 @@ export interface User {
   email: string;
   display_name: string;
   role: 'admin' | 'manager' | 'member';
+  /** True when the user must change their password before continuing.
+   *  Local accounts created via admin bootstrap or password reset land here. */
+  force_password_change?: boolean;
   created_at: string;
   updated_at: string;
 }
