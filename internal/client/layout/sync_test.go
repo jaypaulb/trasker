@@ -252,6 +252,68 @@ func TestSync_KeyRevoked(t *testing.T) {
 	}
 }
 
+// TestSync_AuthErrorClassification: Bug-3 — the layout syncer must surface
+// the four distinct auth-failure sentinels based on the server's
+// `{"error": "..."}` body, not collapse every 401 into ErrKeyExpired and
+// every 403 into ErrKeyRevoked. All four are permanent (retry not bumped).
+func TestSync_AuthErrorClassification(t *testing.T) {
+	cases := []struct {
+		name    string
+		status  int
+		body    string
+		wantErr error
+	}{
+		{"401 expired", http.StatusUnauthorized, `{"error":"API key has expired"}`, clientsync.ErrKeyExpired},
+		{"401 revoked", http.StatusUnauthorized, `{"error":"API key has been revoked"}`, clientsync.ErrKeyRevoked},
+		{"401 invalid", http.StatusUnauthorized, `{"error":"invalid API key"}`, clientsync.ErrKeyInvalid},
+		{"401 missing header", http.StatusUnauthorized, `{"error":"missing Authorization header"}`, clientsync.ErrKeyInvalid},
+		{"403 default", http.StatusForbidden, `{"error":"forbidden"}`, clientsync.ErrPermissionDenied},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s, db := newSyncTestEnv(t)
+			id := seedSnapshot(t, s, time.Now().UTC(), "hash")
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
+
+			syncer := layout.NewSyncer(layout.SyncerConfig{
+				Store: s, DB: db, DeviceID: "dev-1",
+				ServerURL: srv.URL, APIKey: "test-key",
+				Interval: time.Hour,
+			})
+			syncer.ProcessPending(context.Background())
+
+			// All four sentinels are permanent: retry NOT bumped, synced_at NULL.
+			var retryCount int
+			var syncedAt sql.NullString
+			if err := db.QueryRow(
+				`SELECT retry_count, synced_at FROM layout_snapshots WHERE id = ?`, id,
+			).Scan(&retryCount, &syncedAt); err != nil {
+				t.Fatalf("query: %v", err)
+			}
+			if retryCount != 0 {
+				t.Errorf("retry_count = %d, want 0 (permanent error must not bump)", retryCount)
+			}
+			if syncedAt.Valid {
+				t.Errorf("synced_at = %v, want NULL", syncedAt.String)
+			}
+		})
+	}
+
+	// Also verify the new sentinels are re-exported (Three Examples pattern).
+	if !errors.Is(layout.ErrKeyInvalid, clientsync.ErrKeyInvalid) {
+		t.Error("layout.ErrKeyInvalid does not match clientsync.ErrKeyInvalid")
+	}
+	if !errors.Is(layout.ErrPermissionDenied, clientsync.ErrPermissionDenied) {
+		t.Error("layout.ErrPermissionDenied does not match clientsync.ErrPermissionDenied")
+	}
+}
+
 // TestSync_PartialSuccess: with 0 pending rows ProcessPending makes no
 // HTTP call.
 func TestSync_PartialSuccess(t *testing.T) {

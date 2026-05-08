@@ -30,10 +30,14 @@ var backoffSchedule = []time.Duration{
 // match against them without importing internal/client/sync directly.
 // Three Examples: ErrKeyExpired/ErrKeyRevoked are project-wide error
 // shapes (not entity-specific), so re-using them keeps the sentinel set
-// unified.
+// unified. Bug-3 added ErrKeyInvalid/ErrPermissionDenied so the layout
+// syncer can also report accurate auth-failure causes instead of always
+// claiming "expired" for any 401.
 var (
-	ErrKeyExpired = clientsync.ErrKeyExpired
-	ErrKeyRevoked = clientsync.ErrKeyRevoked
+	ErrKeyExpired       = clientsync.ErrKeyExpired
+	ErrKeyRevoked       = clientsync.ErrKeyRevoked
+	ErrKeyInvalid       = clientsync.ErrKeyInvalid
+	ErrPermissionDenied = clientsync.ErrPermissionDenied
 )
 
 // SyncerConfig wires the layout-sync goroutine. Production callers pass
@@ -147,7 +151,11 @@ func (s *Syncer) ProcessPending(ctx context.Context) {
 	if err := s.postBatch(ctx, due); err != nil {
 		// Permanent errors stop the entire batch: do NOT bump retry
 		// counters (matches sync.Queue.processOne semantics).
-		if err == clientsync.ErrKeyExpired || err == clientsync.ErrKeyRevoked {
+		// All four auth-failure sentinels are permanent: retrying with the
+		// same key cannot succeed. Bug-3 added ErrKeyInvalid/ErrPermissionDenied
+		// so we no longer collapse every 401 into "expired".
+		if err == clientsync.ErrKeyExpired || err == clientsync.ErrKeyRevoked ||
+			err == clientsync.ErrKeyInvalid || err == clientsync.ErrPermissionDenied {
 			s.cfg.Logger.Error("layout sync: permanent error", "error", err)
 			return
 		}
@@ -283,10 +291,15 @@ func (s *Syncer) postBatch(ctx context.Context, due []pendingRow) error {
 	switch resp.StatusCode {
 	case http.StatusOK, http.StatusCreated:
 		return nil
-	case http.StatusUnauthorized:
-		return clientsync.ErrKeyExpired
-	case http.StatusForbidden:
-		return clientsync.ErrKeyRevoked
+	case http.StatusUnauthorized, http.StatusForbidden:
+		// Bug-3: parse the server's `{"error": "..."}` body so we map
+		// "expired" → ErrKeyExpired, "revoked" → ErrKeyRevoked, anything
+		// else on 401 → ErrKeyInvalid, anything else on 403 →
+		// ErrPermissionDenied. Previously we always returned
+		// ErrKeyExpired on 401 / ErrKeyRevoked on 403, which lied to the
+		// user when the real cause was (e.g.) a missing Authorization
+		// header or a bcrypt mismatch.
+		return clientsync.ClassifyAuthError(respBody, resp.StatusCode)
 	default:
 		return fmt.Errorf("layout sync: server returned %d: %s",
 			resp.StatusCode, string(respBody))

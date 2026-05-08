@@ -21,6 +21,7 @@ import (
 	"github.com/jaypaulb/trasker/internal/client/pomodoro"
 	"github.com/jaypaulb/trasker/internal/client/presence"
 	"github.com/jaypaulb/trasker/internal/client/setup"
+	"github.com/jaypaulb/trasker/internal/client/store"
 	syncpkg "github.com/jaypaulb/trasker/internal/client/sync"
 	"github.com/jaypaulb/trasker/internal/client/tagger"
 	"github.com/jaypaulb/trasker/internal/client/tracker"
@@ -497,20 +498,18 @@ func openDashboardAndNotify(webURL string, logger *slog.Logger) {
 
 // closeCurrentFocusEvent closes the most recent open focus event (one without an ended_at).
 // Called when focus changes, screen locks, or deadman fires.
+//
+// Delegates to store.CloseLatestOpenFocusEvent which uses a subquery form of
+// UPDATE compatible with the pure-Go modernc.org/sqlite driver (which lacks
+// SQLITE_ENABLE_UPDATE_DELETE_LIMIT, so `UPDATE ... ORDER BY ... LIMIT` is
+// rejected as a syntax error).
 func closeCurrentFocusEvent(db *sql.DB, logger *slog.Logger) {
-	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := db.Exec(
-		`UPDATE focus_events
-		 SET ended_at = ?, duration_s = CAST((julianday(?) - julianday(started_at)) * 86400 AS INTEGER)
-		 WHERE ended_at IS NULL
-		 ORDER BY id DESC LIMIT 1`,
-		now, now,
-	)
+	n, err := store.CloseLatestOpenFocusEvent(db, time.Now())
 	if err != nil {
 		logger.Warn("failed to close focus event", "error", err)
 		return
 	}
-	if n, _ := result.RowsAffected(); n > 0 {
+	if n > 0 {
 		logger.Debug("closed focus event")
 	}
 }
