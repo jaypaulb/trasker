@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -39,6 +40,7 @@ func (a *API) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/config", a.handleGetConfig)
 	mux.HandleFunc("PATCH /api/config", a.handleUpdateConfig)
 	mux.HandleFunc("POST /api/quit", a.handleQuit)
+	mux.HandleFunc("GET /api/status", a.handleStatus)
 	mux.HandleFunc("GET /api/tag-rules", a.handleGetTagRules)
 	mux.HandleFunc("POST /api/tag-rules", a.handleCreateTagRule)
 	mux.HandleFunc("DELETE /api/tag-rules/{id}", a.handleDeleteTagRule)
@@ -447,6 +449,45 @@ func (a *API) handleQuit(w http.ResponseWriter, r *http.Request) {
 	a.jsonOK(w, map[string]string{"status": "shutting_down"})
 	// Signal shutdown after response is sent
 	go a.server.RequestQuit()
+}
+
+// --- Status ---
+
+// handleStatus returns daemon health metrics consumed by
+// `trasker-client status`. Fields with no live data source are
+// reported as empty strings / null timestamps; the CLI renders them
+// as "unknown" / "never".
+func (a *API) handleStatus(w http.ResponseWriter, r *http.Request) {
+	type statusResponse struct {
+		PID              int    `json:"pid"`
+		Port             int    `json:"port"`
+		StartedAt        string `json:"started_at,omitempty"`
+		UptimeSeconds    int64  `json:"uptime_seconds"`
+		PresenceState    string `json:"presence_state,omitempty"`
+		ScreenLockState  string `json:"screen_lock_state,omitempty"`
+		LastLayoutSnap   string `json:"last_layout_snapshot,omitempty"`
+		LastServerSync   string `json:"last_server_sync,omitempty"`
+	}
+
+	resp := statusResponse{
+		PID:  os.Getpid(),
+		Port: a.server.Port(),
+	}
+	if started := a.server.StartedAt(); !started.IsZero() {
+		resp.StartedAt = started.UTC().Format(time.RFC3339)
+		resp.UptimeSeconds = int64(time.Since(started).Seconds())
+	}
+	if sp := a.server.Status(); sp != nil {
+		resp.PresenceState = sp.PresenceState()
+		resp.ScreenLockState = sp.ScreenLockState()
+		if t := sp.LastLayoutSnapshot(); !t.IsZero() {
+			resp.LastLayoutSnap = t.UTC().Format(time.RFC3339)
+		}
+		if t := sp.LastServerSync(); !t.IsZero() {
+			resp.LastServerSync = t.UTC().Format(time.RFC3339)
+		}
+	}
+	a.jsonOK(w, resp)
 }
 
 // --- Tag Rules ---
