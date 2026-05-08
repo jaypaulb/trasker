@@ -10,9 +10,23 @@ import (
 	"net/http"
 	"os"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
+
+// stubStatusProvider is a fixed-value StatusProvider for /api/status tests.
+type stubStatusProvider struct {
+	presence    string
+	screenLock  string
+	lastLayout  time.Time
+	lastSync    time.Time
+}
+
+func (s *stubStatusProvider) PresenceState() string         { return s.presence }
+func (s *stubStatusProvider) ScreenLockState() string       { return s.screenLock }
+func (s *stubStatusProvider) LastLayoutSnapshot() time.Time { return s.lastLayout }
+func (s *stubStatusProvider) LastServerSync() time.Time     { return s.lastSync }
 
 func setupAPIDB(t *testing.T) *sql.DB {
 	t.Helper()
@@ -201,6 +215,77 @@ func TestAPI_UpdateConfig(t *testing.T) {
 	db.QueryRow(`SELECT tracking_on FROM config WHERE id = 1`).Scan(&trackingOn)
 	if trackingOn != 0 {
 		t.Errorf("expected tracking_on=0, got %d", trackingOn)
+	}
+}
+
+func TestAPI_Status_NoProvider(t *testing.T) {
+	db := setupAPIDB(t)
+	srv := startTestServer(t, db)
+
+	resp, err := http.Get(srv.URL() + "/api/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var st map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
+		t.Fatal(err)
+	}
+	if pid, ok := st["pid"].(float64); !ok || int(pid) != os.Getpid() {
+		t.Errorf("pid = %v, want %d", st["pid"], os.Getpid())
+	}
+	if port, ok := st["port"].(float64); !ok || port == 0 {
+		t.Errorf("port = %v, want non-zero", st["port"])
+	}
+	// uptime_seconds is always present (numeric); presence/lock fields
+	// are omitted when no provider is registered.
+	if _, ok := st["uptime_seconds"]; !ok {
+		t.Errorf("uptime_seconds missing")
+	}
+	if _, ok := st["presence_state"]; ok {
+		t.Errorf("presence_state should be omitted when no provider, got %v", st["presence_state"])
+	}
+}
+
+func TestAPI_Status_WithProvider(t *testing.T) {
+	db := setupAPIDB(t)
+	srv := startTestServer(t, db)
+
+	layoutTime := time.Date(2026, 5, 8, 9, 0, 0, 0, time.UTC)
+	syncTime := time.Date(2026, 5, 8, 9, 5, 0, 0, time.UTC)
+	srv.SetStatusProvider(&stubStatusProvider{
+		presence:   "TRACKING",
+		screenLock: "UNLOCKED",
+		lastLayout: layoutTime,
+		lastSync:   syncTime,
+	})
+
+	resp, err := http.Get(srv.URL() + "/api/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	var st map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&st); err != nil {
+		t.Fatal(err)
+	}
+	if st["presence_state"] != "TRACKING" {
+		t.Errorf("presence_state = %v, want TRACKING", st["presence_state"])
+	}
+	if st["screen_lock_state"] != "UNLOCKED" {
+		t.Errorf("screen_lock_state = %v, want UNLOCKED", st["screen_lock_state"])
+	}
+	if st["last_layout_snapshot"] != "2026-05-08T09:00:00Z" {
+		t.Errorf("last_layout_snapshot = %v", st["last_layout_snapshot"])
+	}
+	if st["last_server_sync"] != "2026-05-08T09:05:00Z" {
+		t.Errorf("last_server_sync = %v", st["last_server_sync"])
 	}
 }
 
