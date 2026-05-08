@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"os/signal"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -20,6 +22,7 @@ import (
 	"github.com/jaypaulb/trasker/internal/client/notify"
 	"github.com/jaypaulb/trasker/internal/client/pomodoro"
 	"github.com/jaypaulb/trasker/internal/client/presence"
+	clientruntime "github.com/jaypaulb/trasker/internal/client/runtime"
 	"github.com/jaypaulb/trasker/internal/client/setup"
 	"github.com/jaypaulb/trasker/internal/client/store"
 	syncpkg "github.com/jaypaulb/trasker/internal/client/sync"
@@ -50,6 +53,13 @@ func main() {
 	serverURL = strings.TrimRight(serverURL, "\x00")
 	apiKey = strings.TrimRight(apiKey, "\x00")
 	version = strings.TrimRight(version, "\x00")
+
+	// Subcommand dispatch (status, open, quit, install-autostart, version).
+	// On a recognized subcommand, dispatch() calls os.Exit and never returns.
+	// Bare invocation (no args) falls through to the daemon path below.
+	if dispatch(os.Args, version) {
+		return
+	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		Level: slog.LevelInfo,
@@ -133,6 +143,35 @@ func main() {
 	}
 	logger.Info("dashboard available at", "url", webServer.URL())
 
+	// --- Runtime state files (Phase 10) ---
+	// Pidfile + URL file under XDG_STATE_HOME/trasker. Surfaced via
+	// `trasker-client status / open / quit`. Stale-pid → overwrite.
+	// ErrAlreadyRunning → another live daemon → bail to avoid double-start.
+	if err := clientruntime.WriteState(webServer.Port()); err != nil {
+		if errors.Is(err, clientruntime.ErrAlreadyRunning) {
+			logger.Error("another trasker-client daemon is already running",
+				"hint", "use `trasker-client quit` to stop it, or check your tray")
+			os.Exit(1)
+		}
+		// Non-fatal: a missing state file just means status/open/quit
+		// can't find us. Tracking and sync still work. Log and continue.
+		logger.Warn("failed to write runtime state", "error", err)
+	} else {
+		// Best-effort cleanup on exit — also done in the shutdown block
+		// below for clean exits, but a deferred Clear catches panics.
+		defer func() {
+			if err := clientruntime.Clear(); err != nil {
+				logger.Warn("failed to clear runtime state on exit", "error", err)
+			}
+		}()
+	}
+
+	// Status snapshot — live values surfaced via /api/status.
+	// Updated by goroutines below; reads are atomic.Pointer / atomic
+	// loads so the HTTP handler doesn't block on long-running work.
+	statusSnap := newStatusSnapshot(db)
+	webServer.SetStatusProvider(statusSnap)
+
 	// Always open browser and send notification on startup.
 	// The system tray is a bonus if the desktop supports it.
 	go openDashboardAndNotify(webServer.URL(), logger)
@@ -199,6 +238,11 @@ func main() {
 		}
 	}
 
+	// Seed status defaults: tracking ON at startup, screen unlocked.
+	// These are corrected by the listeners below as events arrive.
+	statusSnap.setPresence("TRACKING")
+	statusSnap.setScreenLock("UNLOCKED")
+
 	// Presence state listener — pauses/resumes tracking based on lock state.
 	//
 	// The screenlock listener has a single Events() channel; layout.Capturer
@@ -218,6 +262,13 @@ func main() {
 				default:
 				}
 				logger.Info("screen lock state change", "state", change.State.String())
+				// Mirror lock state to the status snapshot so /api/status
+				// reflects current desktop state.
+				if change.State == presence.Away {
+					statusSnap.setScreenLock("LOCKED")
+				} else {
+					statusSnap.setScreenLock("UNLOCKED")
+				}
 				if change.State == presence.Away {
 					// Close current focus event when screen locks
 					closeCurrentFocusEvent(db, logger)
@@ -230,6 +281,7 @@ func main() {
 	go func() {
 		for change := range deadman.States() {
 			logger.Info("presence state change", "state", change.State.String())
+			statusSnap.setPresence(change.State.String())
 			if change.State == presence.Paused {
 				closeCurrentFocusEvent(db, logger)
 			}
@@ -365,7 +417,117 @@ func main() {
 	syncQueue.Stop()
 	sysTray.Quit()
 
+	// Clean-exit removal of runtime state files. The deferred Clear
+	// above is the panic-safety net; this is the normal path.
+	if err := clientruntime.Clear(); err != nil {
+		logger.Warn("failed to clear runtime state", "error", err)
+	}
+
 	logger.Info("trasker client stopped")
+}
+
+// --- StatusSnapshot ---
+//
+// statusSnapshot implements webui.StatusProvider. The presence and
+// lock fields are written from event-loop goroutines; the layout +
+// sync timestamp queries hit SQLite each call but are bounded —
+// /api/status is consumed by `trasker-client status` (interactive)
+// not a tight polling loop.
+//
+// Atomic.Pointer keeps the writers and the HTTP handler off each
+// other's locks. The DB is read-only here (the daemon owns the
+// writes elsewhere).
+type statusSnapshot struct {
+	db          *sql.DB
+	presence    atomic.Pointer[string]
+	screenLock  atomic.Pointer[string]
+}
+
+func newStatusSnapshot(db *sql.DB) *statusSnapshot {
+	return &statusSnapshot{db: db}
+}
+
+func (s *statusSnapshot) setPresence(state string) {
+	v := state
+	s.presence.Store(&v)
+}
+
+func (s *statusSnapshot) setScreenLock(state string) {
+	v := state
+	s.screenLock.Store(&v)
+}
+
+// PresenceState returns the most recent presence state name, or "" if
+// no event has been seen yet.
+func (s *statusSnapshot) PresenceState() string {
+	if p := s.presence.Load(); p != nil {
+		return *p
+	}
+	return ""
+}
+
+// ScreenLockState returns "LOCKED" / "UNLOCKED" / "" (unknown).
+func (s *statusSnapshot) ScreenLockState() string {
+	if p := s.screenLock.Load(); p != nil {
+		return *p
+	}
+	return ""
+}
+
+// LastLayoutSnapshot returns MAX(captured_at) from layout_snapshots.
+// Zero Time when the table is empty (layout disabled or no captures yet).
+func (s *statusSnapshot) LastLayoutSnapshot() time.Time {
+	var raw sql.NullString
+	err := s.db.QueryRow(
+		`SELECT MAX(captured_at) FROM layout_snapshots`).Scan(&raw)
+	if err != nil || !raw.Valid {
+		return time.Time{}
+	}
+	t, err := time.Parse(time.RFC3339, raw.String)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
+
+// LastServerSync returns the most recent successful sync time across
+// focus-event submissions (submissions.submitted_at where status =
+// 'sent') and layout snapshots (layout_snapshots.synced_at).
+//
+// Zero Time when nothing has ever been synced — e.g. fresh install
+// running offline.
+func (s *statusSnapshot) LastServerSync() time.Time {
+	var bestStr sql.NullString
+
+	// Focus-event submissions: the queue marks status='sent' on
+	// successful upload; submitted_at is the wall-clock time the
+	// row was queued, which is close enough for "last sync".
+	var subTime sql.NullString
+	if err := s.db.QueryRow(
+		`SELECT MAX(submitted_at) FROM submissions WHERE status = 'sent'`,
+	).Scan(&subTime); err == nil && subTime.Valid {
+		bestStr = subTime
+	}
+
+	// Layout snapshots: synced_at is set by layout.Syncer on success.
+	var layoutTime sql.NullString
+	if err := s.db.QueryRow(
+		`SELECT MAX(synced_at) FROM layout_snapshots WHERE synced_at IS NOT NULL`,
+	).Scan(&layoutTime); err == nil && layoutTime.Valid {
+		// Pick whichever is later.
+		if !bestStr.Valid || layoutTime.String > bestStr.String {
+			bestStr = layoutTime
+		}
+	}
+
+	if !bestStr.Valid {
+		return time.Time{}
+	}
+	t, err := time.Parse(time.RFC3339, bestStr.String)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
 }
 
 func setupDatabase(ctx context.Context, logger *slog.Logger) (*sql.DB, error) {
