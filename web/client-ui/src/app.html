@@ -1,6 +1,6 @@
 <!doctype html>
-<html lang="en" class="">
-<!-- Dark mode class is set by inline script below to prevent FOUC -->
+<html lang="en" class="dark">
+<!-- Dark default; inline script below removes the class only when user explicitly chose light. -->
 	<head>
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -10,8 +10,8 @@
 		<script>
 			(function() {
 				var theme = localStorage.getItem('trasker-theme');
-				if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-					document.documentElement.classList.add('dark');
+				if (theme === 'light') {
+					document.documentElement.classList.remove('dark');
 				}
 			})();
 		</script>
