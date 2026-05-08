@@ -381,11 +381,23 @@ func main() {
 		logger:        logger,
 	}
 
-	sysTray := tray.New(trayActions)
-	trayActions.tray = sysTray
-
-	// Run tray in a goroutine — it may block forever even if the icon never appears.
-	go sysTray.Run()
+	// Probe whether a system tray host (StatusNotifierWatcher on Linux,
+	// always-true elsewhere) is actually available. If absent on Linux,
+	// fyne.io/systray would silently fail to display an icon — we'd be
+	// running blind. In that case skip the tray entirely; the startup
+	// notification already opens the browser and tells the user the URL,
+	// and the new CLI subcommands (status / open / quit) replace the
+	// missing tray menu.
+	var sysTray *tray.Tray
+	if tray.IsAvailable() {
+		sysTray = tray.New(trayActions)
+		trayActions.tray = sysTray
+		// Run tray in a goroutine — it may block forever.
+		go sysTray.Run()
+	} else {
+		logger.Warn("system tray host unavailable; falling back to notify-send + CLI subcommands",
+			"hint", "use `trasker-client status / open / quit` to control the daemon")
+	}
 
 	// Main goroutine blocks on shutdown signal or quit from web UI.
 	select {
@@ -415,7 +427,9 @@ func main() {
 	defer shutdownCancel()
 	webServer.Stop(shutdownCtx)
 	syncQueue.Stop()
-	sysTray.Quit()
+	if sysTray != nil {
+		sysTray.Quit()
+	}
 
 	// Clean-exit removal of runtime state files. The deferred Clear
 	// above is the panic-safety net; this is the normal path.
