@@ -52,6 +52,10 @@ Requirements for initial release. Each maps to roadmap phases. IDs reuse the `RE
 
 - [ ] **REQ-multi-device-dogfooding**: Two or more of Jaypaul's machines (Linux + at least one of macOS/Windows) report focus events, presence, submitted timesheets, and layout snapshots to the deployed server at `trasker.nyolc.cc`. The server dashboard shows a merged cross-device timeline and lets Jaypaul query layout history filtered by device or merged across all devices. This is the primary success metric.
 
+### Daemon Discoverability (DSC) — NEW (added 2026-05-08)
+
+- [ ] **REQ-daemon-discoverability**: A running `trasker-client` daemon must be discoverable and operable without `pgrep`/`lsof` archeology. Daemon writes a pidfile + dashboard-URL file under `~/.local/state/trasker/` on startup (cleared on clean exit, stale-pid replaced on next start). CLI subcommands `trasker-client status / open / quit` work whenever the daemon is running; bare `trasker-client` still launches the daemon (backwards-compatible). Systray uses libayatana-appindicator on Linux when KStatusNotifierWatcher is missing; emits a single `notify-send` desktop notification with the URL on first start when no tray is available. `trasker-client install-autostart` writes a `~/.config/autostart/trasker-client.desktop` (idempotent). Surfaced by Phase 7 smoke when the existing systray failed silently on Ubuntu/GNOME.
+
 ## v2 Requirements
 
 Deferred to future release. Tracked but not in current roadmap.
