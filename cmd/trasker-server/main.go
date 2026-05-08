@@ -19,6 +19,7 @@ import (
 	"github.com/jaypaulb/trasker/internal/server/builder"
 	"github.com/jaypaulb/trasker/internal/server/secrets"
 	"github.com/jaypaulb/trasker/internal/server/store"
+	"github.com/jaypaulb/trasker/migrations"
 	"golang.org/x/crypto/acme/autocert"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -68,6 +69,23 @@ func run(logger *slog.Logger) error {
 		return fmt.Errorf("connecting to database: %w", err)
 	}
 	defer pool.Close()
+
+	// Schema migrations: run before any store-level query so that the rest
+	// of bootstrap can rely on the latest schema. On a fresh DB this applies
+	// every embedded migration in order; on a DB bootstrapped via
+	// deploy/initdb/*.sql it backfills schema_migrations without re-applying
+	// SQL (see migrations/migrate.go for the takeover logic).
+	applied, err := migrations.Apply(ctx, pool)
+	if err != nil {
+		return fmt.Errorf("applying migrations: %w", err)
+	}
+	if len(applied) == 0 {
+		logger.Info("schema migrations: up to date")
+	} else {
+		for _, v := range applied {
+			logger.Info("schema migration applied", "version", v)
+		}
+	}
 
 	s, err := store.New(ctx, pool)
 	if err != nil {
