@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"runtime"
@@ -15,10 +16,12 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/jaypaulb/trasker/internal/client/layout"
 	"github.com/jaypaulb/trasker/internal/client/notify"
 	"github.com/jaypaulb/trasker/internal/client/pomodoro"
 	"github.com/jaypaulb/trasker/internal/client/presence"
 	"github.com/jaypaulb/trasker/internal/client/setup"
+	"github.com/jaypaulb/trasker/internal/client/store"
 	syncpkg "github.com/jaypaulb/trasker/internal/client/sync"
 	"github.com/jaypaulb/trasker/internal/client/tagger"
 	"github.com/jaypaulb/trasker/internal/client/tracker"
@@ -196,10 +199,24 @@ func main() {
 		}
 	}
 
-	// Presence state listener — pauses/resumes tracking based on lock state
+	// Presence state listener — pauses/resumes tracking based on lock state.
+	//
+	// The screenlock listener has a single Events() channel; layout.Capturer
+	// also needs lock events (D-08). We fan out here so each downstream
+	// consumer gets every event. layoutLockCh is the layout-side mirror.
+	var layoutLockCh chan presence.StateChange
 	if screenLock != nil {
+		layoutLockCh = make(chan presence.StateChange, 4)
 		go func() {
+			defer close(layoutLockCh)
 			for change := range screenLock.Events() {
+				// Fan out to the layout capturer first (non-blocking — its
+				// buffer absorbs bursts; if it's somehow full we'd rather
+				// drop a stale lock-state ping than block focus tracking).
+				select {
+				case layoutLockCh <- change:
+				default:
+				}
 				logger.Info("screen lock state change", "state", change.State.String())
 				if change.State == presence.Away {
 					// Close current focus event when screen locks
@@ -252,6 +269,53 @@ func main() {
 		}()
 	}
 
+	// --- Layout Snapshots (Phase 7) ---
+	// Capture the open-window set every 60s when changed, sync to the
+	// server every 5 minutes, prune local rows > 7 days every 6 hours.
+	// Linux X11 only in v1 — see .planning/phases/07-layout-snapshots/07-CONTEXT.md D-04.
+	// Gracefully no-ops when enumerator is unavailable (CGO_ENABLED=0,
+	// macOS, Windows, no DISPLAY) — focus tracking + sync continue normally.
+
+	layoutStore := layout.NewStore(db)
+
+	var (
+		layoutCapturer *layout.Capturer
+		layoutSyncer   *layout.Syncer
+	)
+	if layoutEnum, err := layout.NewPlatformEnumerator(); err != nil {
+		// ErrUnsupported on CGO_ENABLED=0 builds, macOS, Windows, or
+		// no-DISPLAY environments. Intentional — focus tracking, presence,
+		// sync of focus_events, and submit-flow remain unaffected.
+		logger.Warn("layout snapshots unavailable on this build/platform; continuing without",
+			"error", err)
+	} else {
+		layoutCapturer = layout.NewCapturer(
+			layoutEnum,
+			layoutStore,
+			layoutLockCh, // nil-safe: Capturer treats nil as always-unlocked
+			60*time.Second,
+			logger,
+		)
+		layoutCapturer.Start(ctx)
+
+		layoutSyncer = layout.NewSyncer(layout.SyncerConfig{
+			Store:      layoutStore,
+			DB:         db,
+			DeviceID:   deviceID,
+			ServerURL:  serverURL,
+			APIKey:     apiKey,
+			HTTPClient: http.DefaultClient,
+			Interval:   5 * time.Minute,
+			Logger:     logger,
+			BatchSize:  100,
+		})
+		layoutSyncer.Start(ctx)
+
+		go layout.RunPrune(ctx, layoutStore, 7*24*time.Hour, 6*time.Hour, logger)
+
+		logger.Info("layout snapshots wired (capturer 60s, syncer 5m, prune 6h/7d)")
+	}
+
 	// --- System Tray (best-effort) ---
 	// The tray is a bonus — the web dashboard is the primary UI.
 	// On environments without a system tray (headless, no D-Bus, Wayland-only),
@@ -287,6 +351,12 @@ func main() {
 	deadman.Stop()
 	if screenLock != nil {
 		screenLock.Stop()
+	}
+	if layoutCapturer != nil {
+		layoutCapturer.Stop()
+	}
+	if layoutSyncer != nil {
+		layoutSyncer.Stop()
 	}
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -428,20 +498,18 @@ func openDashboardAndNotify(webURL string, logger *slog.Logger) {
 
 // closeCurrentFocusEvent closes the most recent open focus event (one without an ended_at).
 // Called when focus changes, screen locks, or deadman fires.
+//
+// Delegates to store.CloseLatestOpenFocusEvent which uses a subquery form of
+// UPDATE compatible with the pure-Go modernc.org/sqlite driver (which lacks
+// SQLITE_ENABLE_UPDATE_DELETE_LIMIT, so `UPDATE ... ORDER BY ... LIMIT` is
+// rejected as a syntax error).
 func closeCurrentFocusEvent(db *sql.DB, logger *slog.Logger) {
-	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := db.Exec(
-		`UPDATE focus_events
-		 SET ended_at = ?, duration_s = CAST((julianday(?) - julianday(started_at)) * 86400 AS INTEGER)
-		 WHERE ended_at IS NULL
-		 ORDER BY id DESC LIMIT 1`,
-		now, now,
-	)
+	n, err := store.CloseLatestOpenFocusEvent(db, time.Now())
 	if err != nil {
 		logger.Warn("failed to close focus event", "error", err)
 		return
 	}
-	if n, _ := result.RowsAffected(); n > 0 {
+	if n > 0 {
 		logger.Debug("closed focus event")
 	}
 }

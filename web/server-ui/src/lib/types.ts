@@ -6,6 +6,9 @@ export interface User {
   email: string;
   display_name: string;
   role: 'admin' | 'manager' | 'member';
+  /** True when the user must change their password before continuing.
+   *  Local accounts created via admin bootstrap or password reset land here. */
+  force_password_change?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -89,4 +92,29 @@ export interface AuthTokens {
   access_token: string;
   refresh_token: string;
   expires_at: number; // Unix timestamp
+}
+
+// Phase 7: Layout snapshots
+export interface LayoutWindow {
+  app_name: string;
+  window_title: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface LayoutSnapshot {
+  id: string;
+  device_id: string;
+  captured_at: string;
+  windows: LayoutWindow[];
+  windows_hash: string;
+  tier?: 'raw' | '10min' | '1hr';
+}
+
+export interface LayoutTimelineEntry {
+  id: string;
+  captured_at: string;
+  windows_count: number;
 }

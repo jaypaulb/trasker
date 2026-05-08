@@ -131,3 +131,125 @@ func TestGetFocusEvent_NotFound(t *testing.T) {
 		t.Fatal("expected error for non-existent event, got nil")
 	}
 }
+
+// TestCloseLatestOpenFocusEvent_OnlyClosesOpenRow verifies that the subquery
+// form of UPDATE used in CloseLatestOpenFocusEvent (Bug-2 fix) targets ONLY
+// the most recent open row (ended_at IS NULL) and does NOT touch already-closed
+// rows. Regression test for #PHASE-09-BUG-2 where the original SQL used
+// `UPDATE ... ORDER BY id DESC LIMIT 1`, which modernc.org/sqlite rejects
+// with `near "ORDER": syntax error`.
+func TestCloseLatestOpenFocusEvent_OnlyClosesOpenRow(t *testing.T) {
+	s := newTestStore(t)
+
+	base := time.Date(2026, 5, 8, 9, 0, 0, 0, time.UTC)
+
+	// Row 1: already closed (insert + end).
+	closedID, err := s.InsertFocusEvent("Editor", "main.go", base)
+	if err != nil {
+		t.Fatalf("InsertFocusEvent (closed): %v", err)
+	}
+	closedEnd := base.Add(2 * time.Minute)
+	if err := s.EndFocusEvent(closedID, closedEnd); err != nil {
+		t.Fatalf("EndFocusEvent: %v", err)
+	}
+
+	// Row 2: still open (no ended_at).
+	openID, err := s.InsertFocusEvent("Browser", "GitHub", base.Add(3*time.Minute))
+	if err != nil {
+		t.Fatalf("InsertFocusEvent (open): %v", err)
+	}
+
+	// Close the latest open row.
+	closeAt := base.Add(8 * time.Minute)
+	n, err := store.CloseLatestOpenFocusEvent(s.DB(), closeAt)
+	if err != nil {
+		t.Fatalf("CloseLatestOpenFocusEvent: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("RowsAffected = %d, want 1", n)
+	}
+
+	// Row 2 should now be closed with the expected duration.
+	openEv, err := s.GetFocusEvent(openID)
+	if err != nil {
+		t.Fatalf("GetFocusEvent(open): %v", err)
+	}
+	if openEv.EndedAt == nil {
+		t.Fatal("open row not closed: EndedAt is nil")
+	}
+	if !openEv.EndedAt.Equal(closeAt) {
+		t.Errorf("EndedAt = %v, want %v", openEv.EndedAt, closeAt)
+	}
+	if openEv.DurationS == nil || *openEv.DurationS != 300 {
+		t.Errorf("DurationS = %v, want 300 (5 minutes)", openEv.DurationS)
+	}
+
+	// Row 1 must be unchanged.
+	closedEv, err := s.GetFocusEvent(closedID)
+	if err != nil {
+		t.Fatalf("GetFocusEvent(closed): %v", err)
+	}
+	if closedEv.EndedAt == nil || !closedEv.EndedAt.Equal(closedEnd) {
+		t.Errorf("closed row changed: EndedAt = %v, want %v", closedEv.EndedAt, closedEnd)
+	}
+	if closedEv.DurationS == nil || *closedEv.DurationS != 120 {
+		t.Errorf("closed row DurationS = %v, want 120", closedEv.DurationS)
+	}
+}
+
+// TestCloseLatestOpenFocusEvent_NoOpenRow verifies that calling Close when
+// there is no open row is a safe no-op (returns 0 rows affected, no error).
+func TestCloseLatestOpenFocusEvent_NoOpenRow(t *testing.T) {
+	s := newTestStore(t)
+
+	// Insert + close one row so there are no open rows.
+	id, err := s.InsertFocusEvent("App", "Win", time.Now().UTC())
+	if err != nil {
+		t.Fatalf("InsertFocusEvent: %v", err)
+	}
+	if err := s.EndFocusEvent(id, time.Now().UTC().Add(time.Minute)); err != nil {
+		t.Fatalf("EndFocusEvent: %v", err)
+	}
+
+	n, err := store.CloseLatestOpenFocusEvent(s.DB(), time.Now())
+	if err != nil {
+		t.Fatalf("CloseLatestOpenFocusEvent: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("RowsAffected = %d, want 0", n)
+	}
+}
+
+// TestCloseLatestOpenFocusEvent_ClosesOnlyMostRecentOpen verifies that when
+// multiple open rows exist (a state we don't intentionally produce, but want
+// to be robust against), only the most recent (highest id) is closed.
+func TestCloseLatestOpenFocusEvent_ClosesOnlyMostRecentOpen(t *testing.T) {
+	s := newTestStore(t)
+
+	base := time.Date(2026, 5, 8, 10, 0, 0, 0, time.UTC)
+	older, err := s.InsertFocusEvent("App1", "W1", base)
+	if err != nil {
+		t.Fatalf("InsertFocusEvent older: %v", err)
+	}
+	newer, err := s.InsertFocusEvent("App2", "W2", base.Add(time.Minute))
+	if err != nil {
+		t.Fatalf("InsertFocusEvent newer: %v", err)
+	}
+
+	n, err := store.CloseLatestOpenFocusEvent(s.DB(), base.Add(5*time.Minute))
+	if err != nil {
+		t.Fatalf("CloseLatestOpenFocusEvent: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("RowsAffected = %d, want 1", n)
+	}
+
+	olderEv, _ := s.GetFocusEvent(older)
+	newerEv, _ := s.GetFocusEvent(newer)
+	if olderEv.EndedAt != nil {
+		t.Error("older open row was unexpectedly closed")
+	}
+	if newerEv.EndedAt == nil {
+		t.Error("newer open row was NOT closed")
+	}
+}

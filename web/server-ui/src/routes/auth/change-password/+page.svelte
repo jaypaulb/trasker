@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { api } from '$lib/api';
-  import { isAuthenticated, clearAuth } from '$lib/stores/auth';
+  import { isAuthenticated, currentUser } from '$lib/stores/auth';
   import { onMount } from 'svelte';
 
   let currentPassword = $state('');
@@ -30,10 +30,14 @@
 
     loading = true;
     try {
-      await api.auth.changePassword(currentPassword, newPassword);
-      // Re-login with new credentials to get a fresh token
-      clearAuth();
-      goto('/login');
+      const result = await api.auth.changePassword(currentPassword, newPassword);
+      // Server clears force_password_change on success and returns the updated
+      // user. Refresh the local store so the (app)/+layout.svelte route guard
+      // stops redirecting back here.
+      if (result.user) {
+        currentUser.set(result.user);
+      }
+      goto('/');
     } catch (e: unknown) {
       if (e && typeof e === 'object' && 'status' in e && (e as { status: number }).status === 401) {
         error = 'Current password is incorrect';

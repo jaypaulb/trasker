@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/jaypaulb/trasker/internal/shared/models"
@@ -70,11 +71,39 @@ func (e *ErrorResponse) Error() string {
 	return fmt.Sprintf("server error %d: %s", e.Code, e.Message)
 }
 
-// ErrKeyExpired indicates the API key has expired.
+// serverErrorBody mirrors the wire-format `{"error": "...", "message": "..."}`
+// shape returned by the trasker server's auth middleware and respondError
+// helper. The optional `message` field carries operator-friendly guidance
+// (e.g. "Please download a new client from your Trasker dashboard").
+type serverErrorBody struct {
+	Error   string `json:"error"`
+	Message string `json:"message"`
+}
+
+// ErrKeyExpired is returned ONLY when the server explicitly indicates the API
+// key has expired (response body `{"error": "API key has expired", ...}`).
+// Previously this sentinel was returned for ANY 401, which caused the client
+// to lie to the user when the real reason was a missing/invalid header,
+// invalid key format, or bcrypt mismatch (Bug-3).
 var ErrKeyExpired = fmt.Errorf("API key expired — download a new client from your Trasker dashboard")
 
-// ErrKeyRevoked indicates the API key has been revoked.
+// ErrKeyRevoked is returned when the server indicates the API key has been
+// revoked. The auth middleware emits this as a 401 with body
+// `{"error": "API key has been revoked"}`; older code paths may surface it
+// as a 403. Both map here.
 var ErrKeyRevoked = fmt.Errorf("API key revoked — contact your administrator")
+
+// ErrKeyInvalid is returned for 401 responses where the cause is something
+// other than "expired" or "revoked" — missing Authorization header, invalid
+// header format, malformed key, or bcrypt mismatch. These are typically
+// recoverable only by re-downloading or re-installing the client, but the
+// remediation is different from "expired" so they get their own sentinel.
+var ErrKeyInvalid = fmt.Errorf("API key invalid — check your client configuration or re-download the client")
+
+// ErrPermissionDenied is returned for 403 responses where the cause is not
+// an explicit revoke — the authenticated key lacks permission for the
+// requested resource (e.g. role-based access control rejection).
+var ErrPermissionDenied = fmt.Errorf("permission denied — your account does not have access to this resource")
 
 // Client handles HTTP communication with the Trasker server.
 type Client struct {
@@ -161,9 +190,9 @@ func (c *Client) post(ctx context.Context, path string, payload any) ([]byte, er
 	case http.StatusOK, http.StatusCreated:
 		return body, nil
 	case http.StatusUnauthorized:
-		return nil, ErrKeyExpired
+		return nil, ClassifyAuthError(body, http.StatusUnauthorized)
 	case http.StatusForbidden:
-		return nil, ErrKeyRevoked
+		return nil, ClassifyAuthError(body, http.StatusForbidden)
 	default:
 		var errResp ErrorResponse
 		if json.Unmarshal(body, &errResp) == nil && errResp.Message != "" {
@@ -171,4 +200,42 @@ func (c *Client) post(ctx context.Context, path string, payload any) ([]byte, er
 		}
 		return nil, fmt.Errorf("sync client: server returned %d: %s", resp.StatusCode, string(body))
 	}
+}
+
+// ClassifyAuthError inspects the server's `{"error": "..."}` body to map a
+// 401/403 response to the most accurate sentinel. The trasker server emits
+// distinct error strings for distinct failure modes (see
+// internal/server/auth/apikey.go) and the client must not collapse them all
+// into "API key expired" — that lies to the user.
+//
+// Mapping (case-insensitive substring match on the body's `error` field):
+//   - "expired"        → ErrKeyExpired
+//   - "revoked"        → ErrKeyRevoked
+//   - any other 401    → ErrKeyInvalid    (missing/invalid header, bad key, bcrypt mismatch)
+//   - any other 403    → ErrPermissionDenied
+//
+// If the body is empty or not JSON-parseable, fall back to the conservative
+// default for the status code (ErrKeyInvalid for 401, ErrPermissionDenied
+// for 403). The previous behavior — always returning ErrKeyExpired on 401 —
+// is intentionally NOT preserved.
+//
+// Exported because the layout syncer in internal/client/layout/sync.go
+// performs its own HTTP POST and reuses this classification (single source
+// of truth for auth-error mapping, matches the project's "shared sentinel
+// set" pattern referenced in layout/sync.go).
+func ClassifyAuthError(body []byte, status int) error {
+	var parsed serverErrorBody
+	_ = json.Unmarshal(body, &parsed)
+	msg := strings.ToLower(parsed.Error)
+
+	if strings.Contains(msg, "expired") {
+		return ErrKeyExpired
+	}
+	if strings.Contains(msg, "revoked") {
+		return ErrKeyRevoked
+	}
+	if status == http.StatusForbidden {
+		return ErrPermissionDenied
+	}
+	return ErrKeyInvalid
 }

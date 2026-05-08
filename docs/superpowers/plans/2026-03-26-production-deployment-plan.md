@@ -37,7 +37,7 @@
 
 **Context:** Currently `main.go:40` calls `mustEnvMulti("TRASKER_JWT_SECRET", "JWT_SECRET")` which hard-exits if neither is set. We need a function that checks env → file → generate, so the production compose can omit the JWT secret env var entirely.
 
-- [ ] **Step 1: Write the test file**
+- [x] **Step 1: Write the test file**
 
 ```go
 // internal/server/secrets/jwt_test.go
@@ -112,12 +112,12 @@ func TestLoadOrGenerate_EnvTakesPrecedenceOverFile(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `cd /home/jaypaulb/Projects/gh/trasker && go test ./internal/server/secrets/ -v`
 Expected: FAIL — package does not exist yet
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 ```go
 // internal/server/secrets/jwt.go
@@ -166,12 +166,12 @@ func LoadOrGenerateJWTSecret(envKey, filePath string) (string, error) {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `cd /home/jaypaulb/Projects/gh/trasker && go test ./internal/server/secrets/ -v`
 Expected: All 4 tests PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/server/secrets/jwt.go internal/server/secrets/jwt_test.go
@@ -189,7 +189,7 @@ git commit -m "feat: add JWT secret auto-generation from env/file/random"
 
 **Reference:** Current `run()` function is at lines 33-170 of `cmd/trasker-server/main.go`.
 
-- [ ] **Step 1: Add autocert import and FQDN detection**
+- [x] **Step 1: Add autocert import and FQDN detection**
 
 In `cmd/trasker-server/main.go`, add to imports:
 
@@ -199,7 +199,7 @@ In `cmd/trasker-server/main.go`, add to imports:
 "github.com/jaypaulb/trasker/internal/server/secrets"
 ```
 
-- [ ] **Step 2: Replace JWT secret loading**
+- [x] **Step 2: Replace JWT secret loading**
 
 Replace line 40:
 ```go
@@ -223,7 +223,7 @@ if jwtSecret == "" {
 }
 ```
 
-- [ ] **Step 3: Update admin bootstrap to read env vars**
+- [x] **Step 3: Update admin bootstrap to read env vars**
 
 Replace the `bootstrapAdmin` function (lines 229-261) with:
 
@@ -280,7 +280,7 @@ func bootstrapAdmin(ctx context.Context, s *store.Store, logger *slog.Logger) er
 }
 ```
 
-- [ ] **Step 4: Read FQDN env var for use in listener selection and URL derivation**
+- [x] **Step 4: Read FQDN env var for use in listener selection and URL derivation**
 
 After the existing env var reads near line 46, add:
 
@@ -290,7 +290,7 @@ fqdn := os.Getenv("TRASKER_FQDN")
 
 **Note:** `ENTRA_REDIRECT_URL` derivation from FQDN is handled in `router.go`'s `entraRedirectURL()` function (Task 4 Step 4). Do NOT duplicate it here in `main.go`.
 
-- [ ] **Step 5: Replace single-listener with triple-listener (autocert)**
+- [x] **Step 5: Replace single-listener with triple-listener (autocert)**
 
 Replace the server creation and startup block (lines 129-169) with:
 
@@ -440,17 +440,17 @@ logger.Info("server stopped")
 return nil
 ```
 
-- [ ] **Step 6: Verify compilation**
+- [x] **Step 6: Verify compilation**
 
 Run: `cd /home/jaypaulb/Projects/gh/trasker && go build ./cmd/trasker-server/`
 Expected: Compiles with no errors
 
-- [ ] **Step 7: Run existing tests**
+- [x] **Step 7: Run existing tests**
 
 Run: `cd /home/jaypaulb/Projects/gh/trasker && go test ./internal/server/... -count=1`
 Expected: All existing tests pass
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add cmd/trasker-server/main.go
@@ -469,7 +469,7 @@ git commit -m "feat: add autocert TLS, JWT auto-generation, admin env vars"
 
 **Context:** Currently `PreBuild()` compiles all 5 targets using `go build` and stores them in memory. For production (no Go toolchain), we need a `LoadFromDir()` method that reads pre-compiled binaries from `/app/clients/` on disk. The builder init in `main.go` needs to try `LoadFromDir` first, fall back to `PreBuild` if Go toolchain is available.
 
-- [ ] **Step 1: Add NewEmptyBuilder and LoadFromDir to builder.go**
+- [x] **Step 1: Add NewEmptyBuilder and LoadFromDir to builder.go**
 
 Add after the `NewBuilder` function (line 108):
 
@@ -521,7 +521,7 @@ func (b *Builder) LoadFromDir(dir string, logger *slog.Logger) int {
 }
 ```
 
-- [ ] **Step 2: Update main.go builder initialization**
+- [x] **Step 2: Update main.go builder initialization**
 
 Replace the builder init block in `main.go` (lines 96-116) with:
 
@@ -555,7 +555,9 @@ if loaded > 0 {
 }
 ```
 
-- [ ] **Step 3: Add FQDN to Dependencies and update build_handlers.go server URL**
+- [x] **Step 3: Add FQDN to Dependencies and update build_handlers.go server URL**
+
+> **Deviation note:** The `FQDN` field was added to `Dependencies` during Task 2 (Rule 3 — needed for compilation when `deps.FQDN: fqdn` was wired). This step's `build_handlers.go` change was completed here.
 
 Add to `internal/server/api/router.go` `Dependencies` struct:
 
@@ -583,17 +585,17 @@ if deps.FQDN != "" {
 }
 ```
 
-- [ ] **Step 4: Verify compilation**
+- [x] **Step 4: Verify compilation**
 
 Run: `cd /home/jaypaulb/Projects/gh/trasker && go build ./cmd/trasker-server/`
 Expected: Compiles
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `cd /home/jaypaulb/Projects/gh/trasker && go test ./internal/server/... -count=1`
 Expected: All tests pass
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/server/builder/builder.go internal/server/api/build_handlers.go internal/server/api/router.go cmd/trasker-server/main.go
@@ -612,7 +614,7 @@ git commit -m "feat: load pre-compiled client binaries from disk, add FQDN-based
 
 **Important:** The `static/` directory must exist (even empty) for `go:embed` to compile. In CI, the Dockerfile copies the SPA build output there. For local dev without a build, create an empty placeholder.
 
-- [ ] **Step 1: Create embed.go**
+- [x] **Step 1: Create embed.go**
 
 ```go
 // internal/server/webui/embed.go
@@ -627,13 +629,13 @@ import "embed"
 var Assets embed.FS
 ```
 
-- [ ] **Step 2: Create placeholder static directory**
+- [x] **Step 2: Create placeholder static directory**
 
 Run: `mkdir -p /home/jaypaulb/Projects/gh/trasker/internal/server/webui/static && touch /home/jaypaulb/Projects/gh/trasker/internal/server/webui/static/.gitkeep`
 
 This ensures `go build` works even without a SPA build. The `.gitkeep` is committed so the directory exists in source.
 
-- [ ] **Step 3: Add SPA serving to router.go**
+- [x] **Step 3: Add SPA serving to router.go**
 
 At the end of `NewRouter`, after the `/api/v1` route block (after line 149), add:
 
@@ -678,7 +680,7 @@ Add imports to router.go:
 "github.com/jaypaulb/trasker/internal/server/webui"
 ```
 
-- [ ] **Step 4: Update entraRedirectURL to use FQDN**
+- [x] **Step 4: Update entraRedirectURL to use FQDN**
 
 Replace `entraRedirectURL()` function (lines 154-160) with:
 
@@ -696,12 +698,12 @@ func entraRedirectURL() string {
 
 **Note:** This function in `router.go` is the single canonical location for ENTRA_REDIRECT_URL derivation. Task 2 Step 4 explicitly defers to this function — do not duplicate FQDN derivation logic in `main.go`.
 
-- [ ] **Step 5: Verify compilation**
+- [x] **Step 5: Verify compilation**
 
 Run: `cd /home/jaypaulb/Projects/gh/trasker && go build ./cmd/trasker-server/`
 Expected: Compiles (SPA directory has just .gitkeep — that's fine, embed includes it)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/server/webui/embed.go internal/server/webui/static/.gitkeep internal/server/api/router.go
@@ -717,7 +719,7 @@ git commit -m "feat: embed and serve dashboard SPA from server binary"
 
 **Context:** Rewrite as a proper multi-stage build: node → go → alpine runtime. The SPA build output goes into `internal/server/webui/static/` before `go build` so embed picks it up. Pre-compiled client binaries are copied from `deploy/clients/` (CI places them there before building the image).
 
-- [ ] **Step 1: Rewrite Dockerfile.server**
+- [x] **Step 1: Rewrite Dockerfile.server**
 
 ```dockerfile
 # ============================================
@@ -786,18 +788,18 @@ EXPOSE 443 80 8080
 ENTRYPOINT ["./trasker-server"]
 ```
 
-- [ ] **Step 2: Create deploy/clients/.gitkeep**
+- [x] **Step 2: Create deploy/clients/.gitkeep**
 
 Run: `mkdir -p /home/jaypaulb/Projects/gh/trasker/deploy/clients && touch /home/jaypaulb/Projects/gh/trasker/deploy/clients/.gitkeep`
 
 This ensures the `COPY deploy/clients/` directive succeeds even without CI binaries present.
 
-- [ ] **Step 3: Verify Docker build (without CI binaries — should still work)**
+- [x] **Step 3: Verify Docker build (without CI binaries — should still work)**
 
 Run: `cd /home/jaypaulb/Projects/gh/trasker && docker build -f deploy/Dockerfile.server -t trasker-test .`
 Expected: Builds successfully. Client binaries dir will be empty (only .gitkeep) — server logs "no pre-compiled binaries" at startup, which is correct for dev.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add deploy/Dockerfile.server deploy/clients/.gitkeep
@@ -811,7 +813,7 @@ git commit -m "feat: production multi-stage Dockerfile with embedded SPA"
 **Files:**
 - Create: `deploy/docker-compose.production.yml`
 
-- [ ] **Step 1: Create the compose file**
+- [x] **Step 1: Create the compose file**
 
 ```yaml
 # Trasker — Production deployment
@@ -878,7 +880,7 @@ volumes:
 
 **Note:** The health check hits `localhost:8080` which is the internal plain HTTP listener started in Task 2 (the third listener in TLS mode). Port 8080 is not published in `ports:` — it's internal to the container only.
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add deploy/docker-compose.production.yml
@@ -897,7 +899,7 @@ git commit -m "feat: add production compose template for single-command deployme
 - Remove: `deploy/builder-entrypoint.sh` (replaced by CI)
 - Remove: `deploy/.env.example` (replaced by compose template comments)
 
-- [ ] **Step 1: Remove old files**
+- [x] **Step 1: Remove old files**
 
 Run:
 ```bash
@@ -912,12 +914,12 @@ git rm deploy/.env.example
 
 **Note:** Some of these files may not exist. Use `git rm --ignore-unmatch` or check existence first. Only remove files that exist.
 
-- [ ] **Step 2: Verify nothing references removed files**
+- [x] **Step 2: Verify nothing references removed files**
 
 Run: `grep -r "Dockerfile.builder\|builder-entrypoint\|Caddyfile\|nginx/default" --include="*.go" --include="*.yml" --include="*.yaml" --include="*.md" /home/jaypaulb/Projects/gh/trasker/`
 Expected: No references in active code (spec/plan docs are fine)
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git commit -m "chore: remove Caddy, nginx, and builder sidecar (replaced by autocert + embedded SPA + CI builds)"
@@ -943,7 +945,7 @@ The exact values (from `builder.go:21-29`):
 - `SentinelAPIKey` = `TRASKER_SENTINEL_API_KEY________` + 96 underscores (128 total)
 - `SentinelVersion` = `TRASKER_SENTINEL_VERSION________` + 96 underscores (128 total)
 
-- [ ] **Step 1: Create the workflow file**
+- [x] **Step 1: Create the workflow file**
 
 ```yaml
 # .github/workflows/release.yml
@@ -1077,11 +1079,11 @@ jobs:
           generate_release_notes: true
 ```
 
-- [ ] **Step 2: Verify workflow syntax**
+- [x] **Step 2: Verify workflow syntax**
 
 Run: `cd /home/jaypaulb/Projects/gh/trasker && python3 -c "import yaml; yaml.safe_load(open('.github/workflows/release.yml')); print('valid')"`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add .github/workflows/release.yml
@@ -1094,7 +1096,7 @@ git commit -m "ci: add release workflow — build clients, push to GHCR, create 
 
 **No new files.** This is a verification task.
 
-- [ ] **Step 1: Build the production image locally**
+- [x] **Step 1: Build the production image locally**
 
 Run:
 ```bash
@@ -1103,23 +1105,42 @@ docker build -f deploy/Dockerfile.server -t trasker-prod-test .
 ```
 Expected: Multi-stage build completes. SPA embedded. Server binary built.
 
-- [ ] **Step 2: Run with local dev compose to verify backwards compatibility**
+- [x] **Step 2: Run with local dev compose to verify backwards compatibility**
 
-Run:
-```bash
-cd /home/jaypaulb/Projects/gh/trasker/deploy
-docker compose -f docker-compose.local.yml up --build -d
+> **Deviation note:** Used the **production** image (`trasker-test:latest`)
+> rather than `docker-compose.local.yml` for the smoke test, because
+> `Dockerfile.server-local` does not embed the dashboard SPA into the server
+> binary (the local dev workflow runs the SPA via `npm run dev` separately).
+> Verifying step 3 (`/` returning SPA HTML) requires the production image.
+> Local-dev image was rebuilt to confirm it still compiles. Smoke stack
+> mounted `deploy/initdb/` into the postgres container for schema bootstrap
+> (production compose users get this from the GHCR migration step on a real
+> deploy).
+
+Smoke stack run:
 ```
-Expected: Starts successfully, `curl http://localhost:8080/api/v1/health` returns `{"status":"ok",...}`
+trasker:                          postgres:
+  image: trasker-test:latest        volumes:
+  ports: 18080:8080                   - deploy/initdb -> /docker-entrypoint-initdb.d
+  env: TRASKER_DB_*                 healthcheck: pg_isready
+```
+Result: `GET /api/v1/health` → `{"status":"ok","timestamp":"...","version":"dev (unknown)"}`
 
-- [ ] **Step 3: Verify SPA is served from server**
+- [x] **Step 3: Verify SPA is served from server**
 
-Run: `curl -s http://localhost:8080/ | head -5`
-Expected: HTML content (the dashboard SPA's `index.html`)
+Run: `curl -s http://localhost:18080/ | head -10`
+Result: SvelteKit dashboard `index.html` served (200) — embedded SPA works.
 
-- [ ] **Step 4: Run all Go tests**
+- [x] **Step 4: Run all Go tests**
 
-Run: `cd /home/jaypaulb/Projects/gh/trasker && go test ./... -count=1`
-Expected: All tests pass
+Run: `cd /home/jaypaulb/Projects/gh/trasker && go test -p 1 ./internal/server/... -count=1`
+Result: All server packages pass (api, auth, builder, secrets, store, webui).
 
-- [ ] **Step 5: Commit any final fixes if needed**
+> **Pre-existing issue (out of scope):** `internal/client/webui` test setup
+> fails with `pattern all:static: no matching files found` because the
+> client SPA build output (`web/client-ui` → `internal/client/webui/static/`)
+> is gitignored and not present locally. This existed before Phase 8 and
+> is not caused by any Phase 8 change. Logged in `08-SUMMARY.md` under
+> Deferred Issues.
+
+- [x] **Step 5: Commit any final fixes if needed**

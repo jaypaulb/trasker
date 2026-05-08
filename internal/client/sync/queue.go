@@ -181,8 +181,12 @@ func (q *Queue) processOne(ctx context.Context, sub PendingSubmission) {
 		Entries:        entries,
 	})
 	if err != nil {
-		// Handle permanent errors (don't retry)
-		if err == ErrKeyExpired || err == ErrKeyRevoked {
+		// Handle permanent errors (don't retry). All four auth-failure
+		// sentinels are permanent: retrying with the same key cannot succeed.
+		// Bug-3 fix added ErrKeyInvalid + ErrPermissionDenied so we no longer
+		// silently lie that every 401 is "expired".
+		if err == ErrKeyExpired || err == ErrKeyRevoked ||
+			err == ErrKeyInvalid || err == ErrPermissionDenied {
 			q.logger.Error("permanent sync error", "submission_id", sub.ID, "error", err)
 			return
 		}

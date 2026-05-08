@@ -72,6 +72,25 @@ func (s *Store) ListDevicesByUser(ctx context.Context, userID uuid.UUID) ([]Devi
 	return devices, rows.Err()
 }
 
+// GetDeviceByID looks up a device by its server-side UUID.
+// Used by handlers to authorize cross-user access (compare device.UserID
+// against the authenticated UserID — see T-7-03-01).
+func (s *Store) GetDeviceByID(ctx context.Context, id uuid.UUID) (*Device, error) {
+	var d Device
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, user_id, api_key_id, client_device_id, device_name, os, last_seen_at, created_at
+		 FROM devices WHERE id = $1`,
+		id,
+	).Scan(&d.ID, &d.UserID, &d.APIKeyID, &d.ClientDeviceID, &d.DeviceName, &d.OS, &d.LastSeenAt, &d.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("getting device by id: %w", err)
+	}
+	return &d, nil
+}
+
 // GetDeviceByClientID looks up a device by client_device_id and api_key_id.
 func (s *Store) GetDeviceByClientID(ctx context.Context, clientDeviceID string, apiKeyID uuid.UUID) (*Device, error) {
 	var d Device

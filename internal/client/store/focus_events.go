@@ -49,6 +49,38 @@ func (s *Store) EndFocusEvent(id int64, endedAt time.Time) error {
 	return nil
 }
 
+// CloseLatestOpenFocusEvent closes the most recent open focus event (one
+// without an ended_at) by setting ended_at and computing duration_s.
+//
+// Implementation note: this uses a subquery (`WHERE id = (SELECT id ... ORDER
+// BY id DESC LIMIT 1)`) rather than `UPDATE ... ORDER BY id DESC LIMIT 1`
+// because the pure-Go `modernc.org/sqlite` driver is not built with
+// `SQLITE_ENABLE_UPDATE_DELETE_LIMIT`, so UPDATE/DELETE with ORDER BY+LIMIT
+// is rejected as a syntax error. The subquery form is portable and produces
+// equivalent semantics.
+//
+// Returns the number of rows affected (0 or 1).
+func CloseLatestOpenFocusEvent(db *sql.DB, now time.Time) (int64, error) {
+	nowStr := now.UTC().Format(time.RFC3339)
+	result, err := db.Exec(
+		`UPDATE focus_events
+		 SET ended_at = ?,
+		     duration_s = CAST((julianday(?) - julianday(started_at)) * 86400 AS INTEGER)
+		 WHERE id = (
+		     SELECT id FROM focus_events
+		     WHERE ended_at IS NULL
+		     ORDER BY id DESC
+		     LIMIT 1
+		 )`,
+		nowStr, nowStr,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("close latest open focus event: %w", err)
+	}
+	n, _ := result.RowsAffected()
+	return n, nil
+}
+
 // GetFocusEvent returns a single focus event by ID.
 func (s *Store) GetFocusEvent(id int64) (*FocusEvent, error) {
 	row := s.db.QueryRow(

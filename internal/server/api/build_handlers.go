@@ -71,16 +71,22 @@ func buildDownloadHandler(deps *Dependencies) http.HandlerFunc {
 			return
 		}
 
-		// Derive server URL from the incoming request
-		scheme := "https"
-		if r.TLS == nil {
-			if fwd := r.Header.Get("X-Forwarded-Proto"); fwd != "" {
-				scheme = fwd
-			} else {
-				scheme = "http"
+		// Derive server URL: prefer TRASKER_FQDN (canonical public hostname),
+		// otherwise fall back to the incoming request.
+		var serverURL string
+		if deps.FQDN != "" {
+			serverURL = fmt.Sprintf("https://%s", deps.FQDN)
+		} else {
+			scheme := "https"
+			if r.TLS == nil {
+				if fwd := r.Header.Get("X-Forwarded-Proto"); fwd != "" {
+					scheme = fwd
+				} else {
+					scheme = "http"
+				}
 			}
+			serverURL = fmt.Sprintf("%s://%s", scheme, r.Host)
 		}
-		serverURL := fmt.Sprintf("%s://%s", scheme, r.Host)
 
 		// Patch the cached binary with real values (~50ms)
 		binaryData, err := deps.Builder.Patch(builder.PatchRequest{

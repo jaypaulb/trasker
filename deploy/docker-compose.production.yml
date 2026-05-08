@@ -1,0 +1,60 @@
+# Trasker — Production deployment
+# ================================
+# 1. Edit the values marked <CHANGE_ME> below
+# 2. Run:  docker compose -f docker-compose.production.yml up -d
+# 3. Visit https://<your-fqdn> — TLS certificate is acquired automatically
+#
+# Requirements:
+#   - Ports 80 and 443 must be open and reachable from the internet
+#   - DNS A record pointing your FQDN to this server's IP address
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: trasker
+      POSTGRES_USER: trasker
+      POSTGRES_PASSWORD: <CHANGE_ME>
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trasker"]
+      interval: 3s
+      timeout: 2s
+      retries: 10
+
+  trasker:
+    image: ghcr.io/jaypaulb/trasker:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - trasker_data:/data
+    environment:
+      # --- REQUIRED: Edit these ---
+      TRASKER_FQDN: <CHANGE_ME>                # Your server's public hostname (e.g. trasker.example.com)
+      TRASKER_ADMIN_EMAIL: <CHANGE_ME>         # Initial admin account email
+      TRASKER_ADMIN_PASSWORD: <CHANGE_ME>      # Initial admin account password
+      TRASKER_DB_HOST: postgres
+      TRASKER_DB_NAME: trasker
+      TRASKER_DB_USER: trasker
+      TRASKER_DB_PASSWORD: <CHANGE_ME>         # Must match POSTGRES_PASSWORD above
+      # --- Optional: Azure AD SSO ---
+      # TRASKER_ENTRA_TENANT: <tenant-id>
+      # TRASKER_ENTRA_CLIENT: <client-id>
+      # TRASKER_ENTRA_SECRET: <client-secret>
+      # ENTRA_REDIRECT_URL: https://<your-fqdn>/auth/callback
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/api/v1/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:
+  trasker_data:

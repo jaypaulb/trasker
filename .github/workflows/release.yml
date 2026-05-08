@@ -1,0 +1,130 @@
+# .github/workflows/release.yml
+# Source of truth for sentinel values: internal/server/builder/builder.go
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write    # Create releases
+  packages: write    # Push to GHCR
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  # Sentinel strings — must match internal/server/builder/builder.go exactly (128 bytes each).
+  # If builder.go sentinels change, these MUST be updated to match.
+  SENTINEL_SERVER_URL: "TRASKER_SENTINEL_SERVER_URL_____________________________________________________________________________________________________"
+  SENTINEL_API_KEY:    "TRASKER_SENTINEL_API_KEY________________________________________________________________________________________________________"
+  SENTINEL_VERSION:    "TRASKER_SENTINEL_VERSION________________________________________________________________________________________________________"
+
+jobs:
+  build-clients:
+    name: Build client binaries
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Verify sentinel length
+        run: |
+          # Safety check: sentinels must be exactly 128 bytes
+          [ ${#SENTINEL_SERVER_URL} -eq 128 ] || { echo "SENTINEL_SERVER_URL is ${#SENTINEL_SERVER_URL} bytes, expected 128"; exit 1; }
+          [ ${#SENTINEL_API_KEY} -eq 128 ] || { echo "SENTINEL_API_KEY is ${#SENTINEL_API_KEY} bytes, expected 128"; exit 1; }
+          [ ${#SENTINEL_VERSION} -eq 128 ] || { echo "SENTINEL_VERSION is ${#SENTINEL_VERSION} bytes, expected 128"; exit 1; }
+      - name: Build client binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          BINARY_NAME="trasker-client-${GOOS}-${GOARCH}"
+          if [ "${GOOS}" = "windows" ]; then
+            BINARY_NAME="${BINARY_NAME}.exe"
+          fi
+          mkdir -p deploy/clients
+          go build \
+            -ldflags="-s -w -X main.apiKey=${SENTINEL_API_KEY} -X main.serverURL=${SENTINEL_SERVER_URL} -X main.version=${SENTINEL_VERSION}" \
+            -trimpath \
+            -o "deploy/clients/${BINARY_NAME}" \
+            ./cmd/trasker-client
+      - name: Upload client binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: deploy/clients/
+
+  build-and-push:
+    name: Build and push container image
+    runs-on: ubuntu-latest
+    needs: build-clients
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all client binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: deploy/clients/
+          merge-multiple: true
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile.server
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: deploy/docker-compose.production.yml
+          body: |
+            ## Quick Start
+
+            1. Download `docker-compose.production.yml`
+            2. Edit the `<CHANGE_ME>` values (FQDN, admin credentials, database password)
+            3. Run: `docker compose -f docker-compose.production.yml up -d`
+            4. Visit `https://<your-fqdn>` — TLS certificate is acquired automatically
+
+            See [README](https://github.com/${{ github.repository }}#deployment) for full documentation.
+          generate_release_notes: true
