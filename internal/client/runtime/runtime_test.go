@@ -151,6 +151,34 @@ func TestWriteState_OverwritesStalePID(t *testing.T) {
 	}
 }
 
+func TestWriteState_OverwritesReusedPID(t *testing.T) {
+	dir := withStateDir(t)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	// Plant a pidfile with a live PID that is NOT trasker-client.
+	// os.Getppid() is always alive and always a different binary (the test runner).
+	reusedPID := os.Getppid()
+	if err := os.WriteFile(filepath.Join(dir, "trasker.pid"),
+		[]byte(strconv.Itoa(reusedPID)), 0o644); err != nil {
+		t.Fatalf("plant reused pid: %v", err)
+	}
+
+	// WriteState must overwrite (not error) — the live PID is not ours.
+	if err := WriteState(8081); err != nil {
+		t.Fatalf("WriteState over reused pid: %v (pid %d)", err, reusedPID)
+	}
+
+	st, err := ReadState()
+	if err != nil {
+		t.Fatalf("ReadState after overwrite: %v", err)
+	}
+	if st.PID != os.Getpid() {
+		t.Fatalf("PID after overwrite = %d, want %d", st.PID, os.Getpid())
+	}
+}
+
 func TestClear_Idempotent(t *testing.T) {
 	withStateDir(t)
 	// Clear with no files — should not error.

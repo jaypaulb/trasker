@@ -82,8 +82,10 @@ func WriteState(port int) error {
 
 	// Stale-pid check: if a pidfile exists and points at a *different*
 	// running process, refuse. Otherwise, overwrite.
+	// processIsOurs guards against PID reuse: a recycled PID belonging to
+	// a different binary is treated as stale so we overwrite instead of bail.
 	if existing, err := readPID(pidPath(dir)); err == nil {
-		if existing != os.Getpid() && processAlive(existing) {
+		if existing != os.Getpid() && processAlive(existing) && processIsOurs(existing) {
 			return fmt.Errorf("%w (pid %d)", ErrAlreadyRunning, existing)
 		}
 	}
@@ -215,6 +217,20 @@ func processAlive(pid int) bool {
 		return true
 	}
 	return false
+}
+
+// processIsOurs reports whether the process at pid is actually trasker-client,
+// guarding against PID reuse (a recycled PID that belongs to a different binary
+// should not block a new daemon from starting).
+// On Linux we read /proc/<pid>/comm (world-readable, capped at 15 chars).
+// On other platforms we skip the name check and return true conservatively.
+func processIsOurs(pid int) bool {
+	comm, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", pid))
+	if err != nil {
+		// Not Linux, or /proc unavailable — trust signal-0 result.
+		return true
+	}
+	return strings.TrimSpace(string(comm)) == "trasker-client"
 }
 
 // parsePort extracts the port from "http://127.0.0.1:9746" style URLs.
