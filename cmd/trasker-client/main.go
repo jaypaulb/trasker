@@ -166,6 +166,13 @@ func main() {
 		}()
 	}
 
+	// Install the app-launcher desktop entry so the dashboard appears in
+	// the GNOME app grid / search. Non-fatal: a missing entry is annoying
+	// but doesn't affect tracking.
+	if err := clientruntime.WriteDesktopFile(); err != nil {
+		logger.Warn("failed to write desktop launcher", "error", err)
+	}
+
 	// Status snapshot — live values surfaced via /api/status.
 	// Updated by goroutines below; reads are atomic.Pointer / atomic
 	// loads so the HTTP handler doesn't block on long-running work.
