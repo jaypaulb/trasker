@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -144,15 +145,29 @@ func (s *Server) RequestQuit() {
 }
 
 func (s *Server) registerRoutes() {
-	// Serve SPA static files
+	// API routes first so they win the mux match for /api/*
+	api := NewAPI(s.db, s.logger, s)
+	api.RegisterRoutes(s.mux)
+
+	// SPA static files with index.html fallback for client-side routing
 	staticFS, err := fs.Sub(Assets, "static")
 	if err != nil {
 		s.logger.Warn("webui: no embedded assets, SPA will not be served", "error", err)
-	} else {
-		s.mux.Handle("/", http.FileServer(http.FS(staticFS)))
+		return
 	}
-
-	// API routes registered in api.go
-	api := NewAPI(s.db, s.logger, s)
-	api.RegisterRoutes(s.mux)
+	fileServer := http.FileServer(http.FS(staticFS))
+	s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+		if path == "/" {
+			path = "/index.html"
+		}
+		f, err := staticFS.Open(strings.TrimPrefix(path, "/"))
+		if err == nil {
+			f.Close()
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+		r.URL.Path = "/"
+		fileServer.ServeHTTP(w, r)
+	})
 }
