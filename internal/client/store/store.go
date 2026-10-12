@@ -147,6 +147,17 @@ func (s *Store) migrate() error {
 		created_at   TEXT NOT NULL
 	);
 
+	CREATE TABLE IF NOT EXISTS auto_submit_config (
+		id             INTEGER PRIMARY KEY CHECK (id = 1),
+		interval_hours INTEGER NOT NULL DEFAULT 0,
+		enabled_at     TEXT,
+		last_run       TEXT
+	);
+
+	CREATE TABLE IF NOT EXISTS auto_submit_tags (
+		tag_id INTEGER PRIMARY KEY REFERENCES tags(id)
+	);
+
 	CREATE INDEX IF NOT EXISTS idx_layout_snapshots_captured ON layout_snapshots(captured_at);
 	CREATE INDEX IF NOT EXISTS idx_layout_snapshots_pending  ON layout_snapshots(synced_at) WHERE synced_at IS NULL;
 	`

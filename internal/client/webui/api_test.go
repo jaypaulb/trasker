@@ -59,6 +59,13 @@ func setupAPIDB(t *testing.T) *sql.DB {
 			tracking_on INTEGER NOT NULL DEFAULT 1, autostart INTEGER NOT NULL DEFAULT 0,
 			presence_intervals TEXT NOT NULL DEFAULT '[30,45,60,90,120]',
 			pomodoro_defaults TEXT NOT NULL DEFAULT '{"work":25,"break":5}')`,
+		`CREATE TABLE tag_rules (id INTEGER PRIMARY KEY, tag_id INTEGER NOT NULL,
+			app_pattern TEXT NOT NULL, title_pattern TEXT, priority INTEGER NOT NULL DEFAULT 0,
+			suggested INTEGER NOT NULL DEFAULT 0, hit_count INTEGER NOT NULL DEFAULT 0,
+			created_at TEXT NOT NULL)`,
+		`CREATE TABLE auto_submit_config (id INTEGER PRIMARY KEY CHECK (id = 1),
+			interval_hours INTEGER NOT NULL DEFAULT 0, enabled_at TEXT, last_run TEXT)`,
+		`CREATE TABLE auto_submit_tags (tag_id INTEGER PRIMARY KEY)`,
 		// Seed
 		`INSERT INTO config (id, device_id, server_url, api_key) VALUES (1, 'test-dev', 'https://test.example.com', 'key-123')`,
 		`INSERT INTO tags (id, name, color, created_at) VALUES (1, 'Dev', '#00ff00', '2026-01-01T00:00:00Z')`,

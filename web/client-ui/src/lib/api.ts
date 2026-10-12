@@ -16,6 +16,26 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return res.json();
 }
 
+async function put<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(await errorText(res, `PUT ${path}`));
+  return res.json();
+}
+
+async function errorText(res: Response, label: string): Promise<string> {
+  try {
+    const body = await res.json();
+    if (body?.error) return `${label}: ${body.error}`;
+  } catch {
+    // fall through to status-only message
+  }
+  return `${label}: ${res.status}`;
+}
+
 async function patch<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: 'PATCH',
@@ -26,7 +46,7 @@ async function patch<T>(path: string, body: unknown): Promise<T> {
   return res.json();
 }
 
-import type { FocusEvent, Tag, Submission, PomodoroSession, Config } from './types';
+import type { FocusEvent, Tag, Submission, PomodoroSession, Config, TagRule, AutoSubmit } from './types';
 
 export const api = {
   getEvents: (date?: string) =>
@@ -36,6 +56,9 @@ export const api = {
 
   createTag: (name: string, color: string) =>
     post<Tag>('/api/tags', { name, color }),
+
+  updateTag: (id: number, name: string, color: string) =>
+    put<{ status: string }>(`/api/tags/${id}`, { name, color }),
 
   tagEvent: (eventId: number, tagId: number) =>
     post<{ status: string }>(`/api/events/${eventId}/tag`, { tag_id: tagId }),
@@ -83,6 +106,18 @@ export const api = {
       if (!res.ok) throw new Error(`DELETE /api/tag-rules/${id}: ${res.status}`);
       return res.json();
     }) as Promise<{ status: string }>,
+
+  updateTagRule: (id: number, tagId: number, appPattern: string, titlePattern?: string) =>
+    put<{ status: string }>(`/api/tag-rules/${id}`, {
+      tag_id: tagId,
+      app_pattern: appPattern,
+      title_pattern: titlePattern ?? '',
+    }),
+
+  getAutoSubmit: () => get<AutoSubmit>('/api/auto-submit'),
+
+  saveAutoSubmit: (intervalHours: number, tagIds: number[]) =>
+    put<AutoSubmit>('/api/auto-submit', { interval_hours: intervalHours, tag_ids: tagIds }),
 
   acceptTagRule: (id: number) =>
     post<{ status: string }>(`/api/tag-rules/${id}/accept`, {}),

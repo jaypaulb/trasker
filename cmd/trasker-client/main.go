@@ -18,6 +18,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/jaypaulb/trasker/internal/client/autosubmit"
 	"github.com/jaypaulb/trasker/internal/client/layout"
 	"github.com/jaypaulb/trasker/internal/client/notify"
 	"github.com/jaypaulb/trasker/internal/client/pomodoro"
@@ -134,6 +135,9 @@ func main() {
 
 	// Start submission queue
 	syncQueue.Start(ctx)
+
+	// Auto-submit scheduler: turns due, ticked-tag events into pending submissions
+	go autosubmit.Run(ctx, db, logger)
 
 	// Web UI
 	webServer := webui.NewServer(db, defaultWebPort, logger)

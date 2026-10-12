@@ -56,6 +56,15 @@ export interface TagRule {
   hit_count: number;
 }
 
+export interface AutoSubmit {
+  interval_hours: number;
+  enabled: boolean;
+  tag_ids: number[];
+  enabled_at?: string;
+  last_run?: string;
+  next_run?: string;
+}
+
 export interface TagSummary {
   tag: string;
   color: string;

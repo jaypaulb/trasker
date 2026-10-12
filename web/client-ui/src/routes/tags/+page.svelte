@@ -15,6 +15,16 @@
   let ruleAppPattern = '';
   let ruleTitlePattern = '';
 
+  // Inline edit state: at most one tag and one rule open at a time
+  let editingTagId: number | null = null;
+  let editTagName = '';
+  let editTagColor = '';
+
+  let editingRuleId: number | null = null;
+  let editRuleTagId: number | undefined;
+  let editRuleAppPattern = '';
+  let editRuleTitlePattern = '';
+
   onMount(async () => {
     try {
       [tags, rules] = await Promise.all([api.getTags(), api.getTagRules()]);
@@ -38,6 +48,33 @@
     }
   }
 
+  function startEditTag(tag: Tag) {
+    editingTagId = tag.id;
+    editTagName = tag.name;
+    editTagColor = tag.color;
+  }
+
+  function cancelEditTag() {
+    editingTagId = null;
+  }
+
+  async function saveTag(id: number) {
+    if (!editTagName.trim()) {
+      message = 'Failed: tag name is required';
+      return;
+    }
+    try {
+      await api.updateTag(id, editTagName.trim(), editTagColor);
+      // Rules show the tag name, so refresh both lists
+      [tags, rules] = await Promise.all([api.getTags(), api.getTagRules()]);
+      editingTagId = null;
+      message = 'Tag updated';
+      setTimeout(() => message = '', 3000);
+    } catch (e) {
+      message = `Failed: ${e}`;
+    }
+  }
+
   async function createRule() {
     if (!ruleTagId || !ruleAppPattern.trim()) return;
     try {
@@ -47,6 +84,33 @@
       ruleAppPattern = '';
       ruleTitlePattern = '';
       message = 'Rule created';
+      setTimeout(() => message = '', 3000);
+    } catch (e) {
+      message = `Failed: ${e}`;
+    }
+  }
+
+  function startEditRule(rule: TagRule) {
+    editingRuleId = rule.id;
+    editRuleTagId = rule.tag_id;
+    editRuleAppPattern = rule.app_pattern;
+    editRuleTitlePattern = rule.title_pattern ?? '';
+  }
+
+  function cancelEditRule() {
+    editingRuleId = null;
+  }
+
+  async function saveRule(id: number) {
+    if (!editRuleTagId || !editRuleAppPattern.trim()) {
+      message = 'Failed: a tag and an app pattern are required';
+      return;
+    }
+    try {
+      await api.updateTagRule(id, editRuleTagId, editRuleAppPattern.trim(), editRuleTitlePattern.trim());
+      rules = await api.getTagRules();
+      editingRuleId = null;
+      message = 'Rule updated';
       setTimeout(() => message = '', 3000);
     } catch (e) {
       message = `Failed: ${e}`;
@@ -105,11 +169,30 @@
     <!-- Tag list -->
     <div class="space-y-2">
       {#each tags as tag}
-        <div class="flex items-center gap-3 p-3 border dark:border-gray-700 rounded">
-          <div class="w-6 h-6 rounded" style="background-color: {tag.color}"></div>
-          <span class="font-medium flex-1">{tag.name}</span>
-          <span class="text-xs text-gray-400 dark:text-gray-500">Created {new Date(tag.created_at).toLocaleDateString()}</span>
-        </div>
+        {#if editingTagId === tag.id}
+          <div class="flex items-center gap-3 p-3 border dark:border-gray-700 rounded">
+            <input type="color" bind:value={editTagColor}
+                   class="w-10 h-10 rounded cursor-pointer border-0" />
+            <input type="text" bind:value={editTagName}
+                   class="flex-1 border dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded px-3 py-2"
+                   onkeydown={(e) => {
+                     if (e.key === 'Enter') saveTag(tag.id);
+                     if (e.key === 'Escape') cancelEditTag();
+                   }} />
+            <button class="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
+                    onclick={() => saveTag(tag.id)}>Save</button>
+            <button class="px-3 py-1 border dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 text-sm"
+                    onclick={cancelEditTag}>Cancel</button>
+          </div>
+        {:else}
+          <div class="flex items-center gap-3 p-3 border dark:border-gray-700 rounded">
+            <div class="w-6 h-6 rounded" style="background-color: {tag.color}"></div>
+            <span class="font-medium flex-1">{tag.name}</span>
+            <span class="text-xs text-gray-400 dark:text-gray-500">Created {new Date(tag.created_at).toLocaleDateString()}</span>
+            <button class="text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 text-xs"
+                    onclick={() => startEditTag(tag)}>Edit</button>
+          </div>
+        {/if}
       {/each}
 
       {#if tags.length === 0}
@@ -144,19 +227,42 @@
     <!-- Rule list -->
     <div class="space-y-2">
       {#each rules as rule}
-        <div class="flex items-center gap-3 p-3 border dark:border-gray-700 rounded text-sm {rule.suggested ? 'border-yellow-300 dark:border-yellow-600 bg-yellow-50 dark:bg-yellow-900/20' : ''}">
-          <span class="font-medium text-blue-600 dark:text-blue-400">{rule.tag_name}</span>
-          <span class="text-gray-600 dark:text-gray-400">app: <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">{rule.app_pattern}</code></span>
-          {#if rule.title_pattern}
-            <span class="text-gray-600 dark:text-gray-400">title: <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">{rule.title_pattern}</code></span>
-          {/if}
-          <span class="text-gray-400 dark:text-gray-500">hits: {rule.hit_count}</span>
-          {#if rule.suggested}
-            <span class="text-yellow-600 dark:text-yellow-400 text-xs font-medium">SUGGESTED</span>
-            <button class="text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300 text-xs" onclick={() => acceptRule(rule.id)}>Accept</button>
-          {/if}
-          <button class="ml-auto text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-xs" onclick={() => deleteRule(rule.id)}>Delete</button>
-        </div>
+        {#if editingRuleId === rule.id}
+          <div class="flex flex-wrap items-center gap-3 p-3 border dark:border-gray-700 rounded text-sm">
+            <select bind:value={editRuleTagId} class="border dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 rounded px-2 py-2 text-sm">
+              {#each tags as tag}
+                <option value={tag.id}>{tag.name}</option>
+              {/each}
+            </select>
+            <input type="text" bind:value={editRuleAppPattern}
+                   class="flex-1 border dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded px-3 py-2 text-sm"
+                   placeholder="App pattern" />
+            <input type="text" bind:value={editRuleTitlePattern}
+                   class="flex-1 border dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 rounded px-3 py-2 text-sm"
+                   placeholder="Title pattern (optional)" />
+            <button class="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
+                    onclick={() => saveRule(rule.id)}>Save</button>
+            <button class="px-3 py-1 border dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 text-sm"
+                    onclick={cancelEditRule}>Cancel</button>
+          </div>
+        {:else}
+          <div class="flex items-center gap-3 p-3 border dark:border-gray-700 rounded text-sm {rule.suggested ? 'border-yellow-300 dark:border-yellow-600 bg-yellow-50 dark:bg-yellow-900/20' : ''}">
+            <span class="font-medium text-blue-600 dark:text-blue-400">{rule.tag_name}</span>
+            <span class="text-gray-600 dark:text-gray-400">app: <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">{rule.app_pattern}</code></span>
+            {#if rule.title_pattern}
+              <span class="text-gray-600 dark:text-gray-400">title: <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">{rule.title_pattern}</code></span>
+            {/if}
+            <span class="text-gray-400 dark:text-gray-500">hits: {rule.hit_count}</span>
+            {#if rule.suggested}
+              <span class="text-yellow-600 dark:text-yellow-400 text-xs font-medium">SUGGESTED</span>
+              <button class="text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300 text-xs" onclick={() => acceptRule(rule.id)}>Accept</button>
+            {/if}
+            <span class="ml-auto flex gap-3">
+              <button class="text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 text-xs" onclick={() => startEditRule(rule)}>Edit</button>
+              <button class="text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-xs" onclick={() => deleteRule(rule.id)}>Delete</button>
+            </span>
+          </div>
+        {/if}
       {/each}
 
       {#if rules.length === 0}

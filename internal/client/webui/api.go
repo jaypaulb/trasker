@@ -4,6 +4,7 @@ package webui
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -11,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jaypaulb/trasker/internal/client/autosubmit"
 )
 
 // API provides REST endpoints for the local dashboard.
@@ -30,10 +33,13 @@ func (a *API) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/events", a.handleGetEvents)
 	mux.HandleFunc("GET /api/tags", a.handleGetTags)
 	mux.HandleFunc("POST /api/tags", a.handleCreateTag)
+	mux.HandleFunc("PUT /api/tags/{id}", a.handleUpdateTag)
 	mux.HandleFunc("POST /api/events/{id}/tag", a.handleTagEvent)
 	mux.HandleFunc("POST /api/events/{id}/note", a.handleAddNote)
 	mux.HandleFunc("GET /api/submissions", a.handleGetSubmissions)
 	mux.HandleFunc("POST /api/submit", a.handleSubmit)
+	mux.HandleFunc("GET /api/auto-submit", a.handleGetAutoSubmit)
+	mux.HandleFunc("PUT /api/auto-submit", a.handleSaveAutoSubmit)
 	mux.HandleFunc("GET /api/pomodoro", a.handleGetPomodoro)
 	mux.HandleFunc("POST /api/pomodoro/start", a.handleStartPomodoro)
 	mux.HandleFunc("POST /api/pomodoro/stop", a.handleStopPomodoro)
@@ -44,6 +50,7 @@ func (a *API) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/tag-rules", a.handleGetTagRules)
 	mux.HandleFunc("POST /api/tag-rules", a.handleCreateTagRule)
 	mux.HandleFunc("DELETE /api/tag-rules/{id}", a.handleDeleteTagRule)
+	mux.HandleFunc("PUT /api/tag-rules/{id}", a.handleUpdateTagRule)
 	mux.HandleFunc("POST /api/tag-rules/{id}/accept", a.handleAcceptTagRule)
 }
 
@@ -183,6 +190,43 @@ func (a *API) handleCreateTag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.jsonOK(w, map[string]any{"id": id, "name": req.Name, "color": req.Color})
+}
+
+func (a *API) handleUpdateTag(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		a.jsonError(w, http.StatusBadRequest, "invalid tag id")
+		return
+	}
+	var req struct {
+		Name  string `json:"name"`
+		Color string `json:"color"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		a.jsonError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	name := strings.TrimSpace(req.Name)
+	if name == "" || req.Color == "" {
+		a.jsonError(w, http.StatusBadRequest, "name and color are required")
+		return
+	}
+
+	result, err := a.db.Exec(`UPDATE tags SET name = ?, color = ? WHERE id = ?`, name, req.Color, id)
+	if err != nil {
+		if strings.Contains(err.Error(), "UNIQUE") {
+			a.jsonError(w, http.StatusConflict, "tag name already exists")
+			return
+		}
+		a.jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		a.jsonError(w, http.StatusNotFound, "tag not found")
+		return
+	}
+	a.jsonOK(w, map[string]any{"id": id, "name": name, "color": req.Color, "status": "updated"})
 }
 
 // --- Tag/Note Event ---
@@ -604,6 +648,128 @@ func (a *API) handleAcceptTagRule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.jsonOK(w, map[string]string{"status": "accepted"})
+}
+
+func (a *API) handleUpdateTagRule(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		a.jsonError(w, http.StatusBadRequest, "invalid rule id")
+		return
+	}
+	var req struct {
+		TagID        int64   `json:"tag_id"`
+		AppPattern   string  `json:"app_pattern"`
+		TitlePattern *string `json:"title_pattern,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		a.jsonError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	appPattern := strings.TrimSpace(req.AppPattern)
+	if req.TagID == 0 || appPattern == "" {
+		a.jsonError(w, http.StatusBadRequest, "tag_id and app_pattern are required")
+		return
+	}
+
+	var tagExists int
+	if err := a.db.QueryRow(`SELECT COUNT(*) FROM tags WHERE id = ?`, req.TagID).Scan(&tagExists); err != nil {
+		a.jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if tagExists == 0 {
+		a.jsonError(w, http.StatusBadRequest, "tag not found")
+		return
+	}
+
+	// An empty title pattern means "any title", stored as NULL like on create.
+	var titlePattern any
+	if req.TitlePattern != nil && strings.TrimSpace(*req.TitlePattern) != "" {
+		titlePattern = strings.TrimSpace(*req.TitlePattern)
+	}
+
+	result, err := a.db.Exec(
+		`UPDATE tag_rules SET tag_id = ?, app_pattern = ?, title_pattern = ? WHERE id = ?`,
+		req.TagID, appPattern, titlePattern, id,
+	)
+	if err != nil {
+		a.jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		a.jsonError(w, http.StatusNotFound, "rule not found")
+		return
+	}
+	a.jsonOK(w, map[string]string{"status": "updated"})
+}
+
+// --- Auto-submit ---
+
+func (a *API) handleGetAutoSubmit(w http.ResponseWriter, r *http.Request) {
+	a.jsonAutoSubmit(w)
+}
+
+func (a *API) handleSaveAutoSubmit(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		IntervalHours int     `json:"interval_hours"`
+		TagIDs        []int64 `json:"tag_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		a.jsonError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if !autosubmit.ValidInterval(req.IntervalHours) {
+		a.jsonError(w, http.StatusBadRequest, "interval_hours must be one of 0, 1, 2, 4, 6, 8, 12, 24")
+		return
+	}
+
+	if err := autosubmit.Save(a.db, req.IntervalHours, req.TagIDs, time.Now()); err != nil {
+		if errors.Is(err, autosubmit.ErrUnknownTag) {
+			a.jsonError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		a.jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	a.jsonAutoSubmit(w)
+}
+
+// jsonAutoSubmit writes the current auto-submit settings, used by both GET and PUT.
+func (a *API) jsonAutoSubmit(w http.ResponseWriter) {
+	s, err := autosubmit.Load(a.db)
+	if err != nil {
+		a.jsonError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	type AutoSubmitResponse struct {
+		IntervalHours int     `json:"interval_hours"`
+		Enabled       bool    `json:"enabled"`
+		TagIDs        []int64 `json:"tag_ids"`
+		EnabledAt     *string `json:"enabled_at,omitempty"`
+		LastRun       *string `json:"last_run,omitempty"`
+		NextRun       *string `json:"next_run,omitempty"`
+	}
+
+	resp := AutoSubmitResponse{
+		IntervalHours: s.IntervalHours,
+		Enabled:       s.Enabled(),
+		TagIDs:        s.TagIDs,
+	}
+	if resp.TagIDs == nil {
+		resp.TagIDs = []int64{}
+	}
+	format := func(t *time.Time) *string {
+		if t == nil {
+			return nil
+		}
+		v := t.UTC().Format(time.RFC3339)
+		return &v
+	}
+	resp.EnabledAt = format(s.EnabledAt)
+	resp.LastRun = format(s.LastRun)
+	resp.NextRun = format(s.NextRun())
+	a.jsonOK(w, resp)
 }
 
 // --- Config ---
