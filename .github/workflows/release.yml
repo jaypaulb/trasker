@@ -42,6 +42,20 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      # The client embeds the Svelte SPA (internal/client/webui/static, gitignored).
+      # Build it first, the same way `make client-ui` does, or go:embed finds nothing.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/client-ui/package-lock.json
+      - name: Build client SPA
+        run: |
+          cd web/client-ui
+          npm ci
+          npm run build
+          rm -rf ../../internal/client/webui/static
+          cp -r build ../../internal/client/webui/static
       - name: Verify sentinel length
         run: |
           # Safety check: sentinels must be exactly 128 bytes
